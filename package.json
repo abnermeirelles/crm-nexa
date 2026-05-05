@@ -1,0 +1,26 @@
+{
+  "name": "crm-nexa",
+  "version": "0.0.1",
+  "private": true,
+  "description": "CRM multi-tenant + plataforma de mídias sociais",
+  "engines": {
+    "node": ">=22 <26",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@11.0.4",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prettier": "^3.4.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  }
+}
