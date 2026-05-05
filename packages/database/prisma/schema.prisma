@@ -1,0 +1,20 @@
+// =====================================================================
+// CRM Nexa — Schema Prisma
+// =====================================================================
+// Todas as mudanças no schema são versionadas via migrations:
+//   pnpm -F @crm-nexa/database db:migrate:create --name <descricao>
+// =====================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  // url usada por migrations e prisma CLI (role com BYPASSRLS).
+  // O Prisma Client de runtime sobrescreve para DATABASE_URL (role crm_app, sujeita a RLS).
+  url        = env("DATABASE_ADMIN_URL")
+  extensions = [uuidOssp(map: "uuid-ossp"), pgTrgm(map: "pg_trgm"), citext, vector]
+}
