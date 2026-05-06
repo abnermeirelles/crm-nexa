@@ -1,0 +1,118 @@
+// =====================================================================
+// CRM Nexa — Schema Prisma
+// =====================================================================
+// Todas as mudanças no schema são versionadas via migrations:
+//   pnpm -F @crm-nexa/database db:migrate:create -- --name <descricao>
+// =====================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  // url usada por migrations e prisma CLI (role com BYPASSRLS).
+  // O Prisma Client de runtime sobrescreve para DATABASE_URL (role crm_app, sujeita a RLS).
+  url        = env("DATABASE_ADMIN_URL")
+  // Extensões "trusted" gerenciadas pelo Prisma. A extensão `vector` (pgvector)
+  // está instalada manualmente em crm_nexa_dev mas não é declarada aqui — será
+  // adicionada na Fase 10 quando começarmos a usar embeddings de contatos.
+  extensions = [uuidOssp(map: "uuid-ossp"), pgTrgm(map: "pg_trgm"), citext]
+}
+
+// =====================================================================
+// Tenant — empresa cliente do SaaS
+// =====================================================================
+model Tenant {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  slug      String    @unique @db.VarChar(64)
+  name      String    @db.VarChar(255)
+  plan      String    @default("starter") @db.VarChar(32)
+  status    String    @default("active") @db.VarChar(32)
+  limits    Json      @default("{}")
+  dpoEmail  String?   @map("dpo_email") @db.VarChar(255)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  users     User[]
+  sessions  UserSession[]
+  auditLogs AuditLog[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+// =====================================================================
+// User — usuário do sistema (pertence a um tenant)
+// =====================================================================
+model User {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  email        String    @db.Citext
+  passwordHash String    @map("password_hash")
+  name         String    @db.VarChar(255)
+  role         String    @default("agent") @db.VarChar(32)
+  mfaSecret    String?   @map("mfa_secret")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sessions  UserSession[]
+  auditLogs AuditLog[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+  @@map("users")
+}
+
+// =====================================================================
+// UserSession — refresh tokens ativos (1 linha por sessão de login)
+// =====================================================================
+model UserSession {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  refreshTokenHash String    @map("refresh_token_hash")
+  ip               String?   @db.Inet
+  userAgent        String?   @map("user_agent")
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt])
+  @@index([tenantId, expiresAt])
+  @@map("user_sessions")
+}
+
+// =====================================================================
+// AuditLog — registro append-only de ações sensíveis (LGPD)
+// =====================================================================
+model AuditLog {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  actorType  String   @map("actor_type") @db.VarChar(32)
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String   @db.VarChar(64)
+  entityType String?  @map("entity_type") @db.VarChar(32)
+  entityId   String?  @map("entity_id") @db.Uuid
+  before     Json?
+  after      Json?
+  ip         String?  @db.Inet
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actor  User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, action, createdAt])
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_log")
+}
