@@ -2,8 +2,8 @@
 
 > **Duração estimada:** 2 a 2,5 semanas (solo dev)
 > **Objetivo:** Sair do zero com esqueleto deployável, banco multi-tenant funcionando com RLS, autenticação funcionando, e pipeline de CI/CD ativo.
-> **Última atualização:** 2026-05-02
-> **Status:** Em execução
+> **Última atualização:** 2026-05-06
+> **Status:** Em execução — 0.1, 0.2, 0.3 concluídas (PR #1 mergeado). Próxima: 0.4.
 
 ---
 
@@ -241,13 +241,48 @@ Checklist final, todos obrigatórios:
 
 ---
 
-## 8. Próximas ações
+## 8. Histórico de execução
 
 > Esta seção é viva — atualizar conforme a fase progride.
 
-**Próxima ação:** Sub-fase 0.1 — Setup ambiental.
-- Confirmar local do código (`~/Projects/crm-nexa`)
-- Confirmar conta GitHub
-- Confirmar domínio principal
-- Verificar quais portas dos serviços do Swarm estão expostas (Postgres, Redis, MinIO)
-- Instalar Tailscale (ou alternativa) e validar conexão
+### 0.1 — Setup ambiental ✅ concluída em 2026-05-05
+
+- Pré-requisitos no Mac instalados (Node 25, pnpm 11, libpq, redis-cli, Docker, gh CLI)
+- SSH key configurada via `gh auth login --git-protocol ssh`
+- Acesso ao Swarm: serviços já publicamente acessíveis em `cloud.nexasource.com.br` (sem necessidade de Tailscale por enquanto)
+- Pasta do código: `~/Projetos/crm-nexa` (fora do GDrive)
+
+### 0.2 — Repositório e monorepo ✅ concluída em 2026-05-05
+
+- Repo `abnermeirelles/crm-nexa` criado privado no GitHub
+- Estrutura monorepo (pnpm workspaces + Turborepo) montada
+- Config raiz: `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, `.gitignore`, `.editorconfig`, `.nvmrc`, `.npmrc`, `.prettierrc.json`, `.env.example`, `.vscode/`
+- Commit: `chore: bootstrap monorepo (Sub-fase 0.2)`
+
+### 0.3 — Banco + Prisma + Multi-tenant com RLS ✅ concluída em 2026-05-06
+
+- Banco `crm_nexa_dev` criado no Postgres 17 do Swarm
+- Roles separadas: `crm_app` (sem BYPASSRLS, runtime) e `crm_admin` (com BYPASSRLS, CREATEDB, CREATE on database; usado em migrations e admin)
+- Extensões: `uuid-ossp`, `pg_trgm`, `citext` (vector adiada para Fase 10)
+- Package `@crm-nexa/database` com Prisma 6
+- Migration `20260506222333_init_tenancy` aplicada — cria 4 tabelas (`tenants`, `users`, `user_sessions`, `audit_log`) + função `current_tenant_id()` + RLS forçada + 4 policies + triggers de `updated_at` e `prevent_audit_update`
+- Validado via 5 testes manuais de isolamento — RLS bloqueia leitura, INSERT e UPDATE cross-tenant via `crm_app`
+- PR #1 squash mergeado na main
+
+### 0.4 — API NestJS + Auth ⏳ próxima
+
+Detalhes em [`docs/04-fase-0-4-api-auth.md`](04-fase-0-4-api-auth.md).
+
+### 0.5 — Web Next.js + Login ⏳ pendente
+### 0.6 — CI/CD + Primeiro deploy ⏳ pendente
+
+---
+
+## 9. Pendências técnicas registradas durante a execução
+
+Itens que apareceram durante 0.1-0.3 e ficaram para depois:
+
+- **Restringir Postgres e Redis por IP allowlist no pfSense** ou colocar atrás de Tailscale antes do primeiro cliente pago. Risco de segurança documentado em `docs/01-arquitetura.md` §13.
+- **`crm_admin` em produção** não deve ter `CREATEDB` nem `CREATE ON DATABASE`. Esses privilégios foram concedidos só em dev por causa do shadow database do Prisma e de `CREATE EXTENSION`. Em prod usaremos `prisma migrate deploy` que dispensa shadow DB.
+- **`vector` (pgvector)** não está sendo gerenciado pelo Prisma — adicionar via migration manual quando começar Fase 10 (IA opcional).
+- **Backup off-site** (DigitalOcean Spaces) ainda não configurado — agendar antes do beta.
