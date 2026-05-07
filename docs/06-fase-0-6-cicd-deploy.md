@@ -12,13 +12,13 @@
 No fim da Fase 0.6, o sistema deve ter:
 
 - ✅ `Dockerfile` produção-grade para `apps/api` e `apps/web` (multi-stage, non-root, imagem mínima)
-- ✅ `deploy/stack-staging.yml` descrevendo o stack do Docker Swarm (services + Traefik labels + secrets refs)
+- ✅ `deploy/stack-staging.yml` descrevendo o stack do Docker Swarm (services + Traefik labels + secrets refs), gerenciado via **Portainer**
 - ✅ Imagens publicadas em **`ghcr.io/abnermeirelles/crm-nexa-api`** e **`...-web`**
 - ✅ Workflow do **GitHub Actions** que em push para `main`:
   1. Roda lint + typecheck + build (gates de qualidade)
   2. Buida imagens Docker e faz push para ghcr.io
   3. Roda `prisma migrate deploy` contra o banco de staging
-  4. Faz `docker stack deploy` no Swarm via SSH
+  4. Dispara **webhook do Portainer** (um por serviço) para redeployar a stack
 - ✅ **Docker Swarm secrets** populados (DATABASE_URL, JWT_*, S3_*, etc.) — app lê de `/run/secrets/<name>` ou via env vars derivados
 - ✅ Domínios em staging com cert TLS (Let's Encrypt via Traefik):
   - `https://crm-dev.nexasource.com.br` → web (Next.js)
@@ -65,15 +65,20 @@ A Fase 0.6 é dividida em 5 sub-sub-fases sequenciais.
 **Saída:** `deploy/stack-staging.yml` descrevendo o que vai rodar no Swarm.
 
 - Services:
-  - `api`: imagem `ghcr.io/abnermeirelles/crm-nexa-api:${TAG}`, replicas 1, secrets refs, healthcheck
-  - `web`: imagem `ghcr.io/abnermeirelles/crm-nexa-web:${TAG}`, replicas 1, secrets refs, healthcheck
-- Traefik labels (assumindo Traefik v3 já configurado no Swarm):
-  - api: `Host(\`api.crm-dev.nexasource.com.br\`)` → port 3001, certresolver letsencrypt
-  - web: `Host(\`crm-dev.nexasource.com.br\`)` → port 3000, certresolver letsencrypt
+  - `api`: imagem `ghcr.io/abnermeirelles/crm-nexa-api:latest`, replicas 1, secrets refs, healthcheck
+  - `web`: imagem `ghcr.io/abnermeirelles/crm-nexa-web:latest`, replicas 1, secrets refs, healthcheck
+  - Tag `latest` é re-pulada pelo Portainer no webhook; histórico fica no ghcr.io via tags `sha-<7>` adicionais
+- Traefik v3 labels (certresolver chamado `le`):
+  - api: `Host(\`api.crm-dev.nexasource.com.br\`)` → port 3001, certresolver=le
+  - web: `Host(\`crm-dev.nexasource.com.br\`)` → port 3000, certresolver=le
+- Networks:
+  - `public_proxy` (overlay externa, onde mora o Traefik) — **api e web**
+  - `infra_internal` (overlay externa, onde moram Postgres/Redis/RabbitMQ) — **apenas api**
+- Comunicação web → api via DNS interno do overlay `public_proxy`: `http://api:3001` (mais rápido que passar pelo Traefik)
 - Restart policy: `on-failure`, max_attempts: 3, delay: 30s
 - Resource limits modestos (api: 256M/0.5 cpu; web: 256M/0.5 cpu) — ajustável depois
-- Network: `traefik` (overlay externa pré-existente) + uma network interna `crm-nexa` para api↔web (futuro)
-- Secrets references: `DATABASE_URL`, `DATABASE_ADMIN_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `S3_*`, etc.
+- Secrets references: `nexa_database_url`, `nexa_database_admin_url`, `nexa_jwt_access_secret`, `nexa_jwt_refresh_secret`, `nexa_s3_*`, etc.
+- **Stack file gerenciado via Portainer**: opção preferencial é "Repository" (Portainer pulla `deploy/stack-staging.yml` direto do repo e re-pulla a cada webhook). Fallback: colar manualmente o YAML na UI do Portainer.
 
 ### Sub-fase 0.6.C — GitHub Actions workflow (1 dia)
 
@@ -96,28 +101,36 @@ jobs:
     - pnpm build (turbo, com cache)
   build-push:
     needs: validate
-    - login ghcr.io
-    - build apps/api → push (tags: latest, sha-<sha>, sha-<sha7>)
+    - login ghcr.io (via GITHUB_TOKEN com packages:write)
+    - build apps/api → push (tags: latest, sha-<sha7>)
     - build apps/web → push (mesmas tags)
   migrate:
     needs: build-push
-    - pnpm install (sem deps de runtime — apenas database package + tsx)
-    - DATABASE_ADMIN_URL=${{ secrets.STAGING_DATABASE_ADMIN_URL }} pnpm prisma migrate deploy
+    - pnpm install (filtered ao @crm-nexa/database)
+    - DATABASE_ADMIN_URL=${{ secrets.STAGING_DATABASE_ADMIN_URL }} \
+        pnpm -F @crm-nexa/database db:migrate:deploy
   deploy:
     needs: migrate
-    - SSH para o Swarm host (chave em secrets)
-    - export TAG=sha-<sha7>
-    - docker stack deploy -c stack-staging.yml crm-nexa --with-registry-auth
-    - aguarda servico estabilizar (curl /health no host)
+    # Dispara webhooks do Portainer — um por servico
+    - curl -X POST ${{ secrets.PORTAINER_WEBHOOK_API }}
+    - curl -X POST ${{ secrets.PORTAINER_WEBHOOK_WEB }}
+    # Smoke: aguarda /health responder 200 (timeout 60s)
+    - retry curl -f https://api.crm-dev.nexasource.com.br/health
+    - retry curl -fI https://crm-dev.nexasource.com.br/login
 ```
 
 Secrets do GitHub Actions necessários:
-- `SSH_PRIVATE_KEY` — chave para SSH no Swarm host
-- `SSH_HOST`, `SSH_USER`
 - `STAGING_DATABASE_ADMIN_URL` — para migrations
-- `GHCR_TOKEN` (ou usar `GITHUB_TOKEN` com `packages: write` permission)
+- `PORTAINER_WEBHOOK_API` — URL do webhook do serviço `api` no Portainer
+- `PORTAINER_WEBHOOK_WEB` — URL do webhook do serviço `web` no Portainer
+- `GITHUB_TOKEN` — automático, basta `permissions: { packages: write }` no job
 
 PR validation: workflow secundário em `pull_request` que roda só `validate` (sem deploy).
+
+**Setup one-time no Portainer (antes do primeiro deploy):**
+1. Stacks → Add stack → Repository (aponta para `deploy/stack-staging.yml` do repo)
+2. Após criar a stack, em cada serviço (`api` e `web`): Service Webhooks → Create webhook → copiar URL
+3. Colar URLs como secrets no GitHub
 
 ### Sub-fase 0.6.D — Secrets management no Swarm (0.5 dia)
 
@@ -176,11 +189,13 @@ PR validation: workflow secundário em `pull_request` que roda só `validate` (s
 - ghcr.io está incluído no plano do GitHub e suporta auth via Action token (`${{ secrets.GITHUB_TOKEN }}`)
 - Imagens em `ghcr.io/abnermeirelles/crm-nexa-{api,web}` ficam visíveis junto ao repo
 
-### 4.2 Por que SSH + `docker stack deploy` e não Watchtower/auto-pull
+### 4.2 Por que webhook do Portainer e não SSH ou Watchtower
 
-- Controle explícito: o CI sabe quando o deploy aconteceu, pode falhar o pipeline em problema
-- Migrations precisam rodar **antes** do app — Watchtower não dá esse controle
-- Mais fácil adicionar gates (manual approval, smoke test) no futuro
+- Portainer já está sendo usado pelo solo dev para gerir stacks no Swarm — aproveita ferramenta existente em vez de adicionar SSH+chaves dedicadas
+- Webhook é stateless e atômico: HTTP POST → Portainer faz `service update --force` com nova imagem
+- Migrations rodam **antes** do webhook no CI, mantendo o gate de qualidade
+- Stack file fica no git (Portainer Repository mode) — preserva GitOps mesmo com UI manual disponível
+- Watchtower ficaria sem o gate de migration (auto-pull = sem ordem garantida)
 
 ### 4.3 Por que Docker Swarm secrets e não env vars
 
@@ -247,7 +262,7 @@ compose.local.yml               ← validar imagens localmente
 
 | Risco | Mitigação |
 |---|---|
-| Deploy quebra sem rollback | Tag por sha permite `docker service update --image <previous-sha>`. Documentar comando em `deploy/README.md`. |
+| Deploy quebra sem rollback | Tag por sha mantida em ghcr.io permite editar a stack no Portainer apontando para `:sha-<previous>` e re-deployar. Documentar em `deploy/README.md`. |
 | Migration falha mid-way | Prisma migrate deploy é transacional por migration; falha aborta o deploy antes da nova imagem subir |
 | TLS cert demora pra emitir (rate limit Let's Encrypt) | Primeiro deploy: usar staging endpoint do LE; depois trocar pra prod. Ou aproveitar config existente do Traefik no Swarm |
 | Swarm fica sem recursos (RAM/CPU) | Resource limits no stack; alertar se aproxima do total. Posterior: adicionar mais nó ao Swarm |
@@ -263,7 +278,8 @@ compose.local.yml               ← validar imagens localmente
 - [ ] `deploy/stack-staging.yml` validado com `docker stack config -c stack-staging.yml`
 - [ ] Secrets criados no Swarm (lista em `deploy/secrets.md`)
 - [ ] DNS apontando para o Swarm host
-- [ ] Workflow do GitHub Actions com 4 jobs (validate, build-push, migrate, deploy) verde no primeiro push
+- [ ] Stack criada no Portainer via Repository mode + webhooks de cada serviço gerados
+- [ ] Workflow do GitHub Actions com 4 jobs (validate, build-push, migrate, deploy via webhook) verde no primeiro push
 - [ ] `https://api.crm-dev.nexasource.com.br/health` → 200 com cert válido
 - [ ] `https://crm-dev.nexasource.com.br/login` carrega
 - [ ] Login real no browser funciona com cookies `Secure`
