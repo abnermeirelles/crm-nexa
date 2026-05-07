@@ -1,0 +1,159 @@
+name: staging-deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write  # ghcr.io push
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_API: ghcr.io/${{ github.repository_owner }}/crm-nexa-api
+  IMAGE_WEB: ghcr.io/${{ github.repository_owner }}/crm-nexa-web
+
+jobs:
+  validate:
+    name: Lint + typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        env:
+          DATABASE_ADMIN_URL: postgresql://placeholder@localhost:5432/placeholder
+        run: pnpm -F @crm-nexa/database exec prisma generate
+
+      - name: Typecheck
+        run: pnpm turbo run typecheck
+
+      - name: Lint
+        run: pnpm turbo run lint
+
+      - name: Build
+        run: pnpm turbo run build
+
+  build-push:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    needs: validate
+    outputs:
+      sha7: ${{ steps.meta.outputs.sha7 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        run: echo "sha7=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push API
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_API }}:latest
+            ${{ env.IMAGE_API }}:sha-${{ steps.meta.outputs.sha7 }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+          provenance: false
+
+      - name: Build & push Web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_WEB }}:latest
+            ${{ env.IMAGE_WEB }}:sha-${{ steps.meta.outputs.sha7 }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+          provenance: false
+
+  migrate:
+    name: Prisma migrate deploy
+    runs-on: ubuntu-latest
+    needs: build-push
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (filtered)
+        run: pnpm install --frozen-lockfile --filter "@crm-nexa/database..."
+
+      - name: Run migrate deploy
+        env:
+          DATABASE_ADMIN_URL: ${{ secrets.STAGING_DATABASE_ADMIN_URL }}
+        run: pnpm -F @crm-nexa/database exec prisma migrate deploy
+
+  deploy:
+    name: Deploy via Portainer webhook
+    runs-on: ubuntu-latest
+    needs: migrate
+    steps:
+      - name: Trigger Portainer webhook (api)
+        run: |
+          curl -fsSL -X POST -o /dev/null -w "HTTP %{http_code}\n" \
+            "${{ secrets.PORTAINER_WEBHOOK_API }}"
+
+      - name: Trigger Portainer webhook (web)
+        run: |
+          curl -fsSL -X POST -o /dev/null -w "HTTP %{http_code}\n" \
+            "${{ secrets.PORTAINER_WEBHOOK_WEB }}"
+
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsSL -o /dev/null "https://api.crm-dev.nexasource.com.br/health"; then
+              echo "API healthy after $((i * 5))s"
+              exit 0
+            fi
+            echo "Attempt $i — waiting 5s..."
+            sleep 5
+          done
+          echo "API health check timed out after 150s"
+          exit 1
+
+      - name: Wait for Web
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsSI -o /dev/null "https://crm-dev.nexasource.com.br/login"; then
+              echo "Web healthy after $((i * 5))s"
+              exit 0
+            fi
+            echo "Attempt $i — waiting 5s..."
+            sleep 5
+          done
+          echo "Web health check timed out after 150s"
+          exit 1
