@@ -1,1 +1,1 @@
-export { hashPassword, verifyPassword } from './argon2';
+export { hashPassword, verifyPassword } from './argon2.js';

@@ -2,4 +2,4 @@ export {
   generateRefreshToken,
   hashRefreshToken,
   verifyRefreshToken,
-} from './token';
+} from './token.js';
