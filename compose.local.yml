@@ -1,0 +1,45 @@
+# =============================================================================
+# CRM Nexa — Smoke local das imagens Docker
+# =============================================================================
+# Uso: docker compose -f compose.local.yml up --build
+#
+# NAO substitui o `pnpm dev` — esse compose existe apenas para validar
+# que os Dockerfiles buildam e os containers rodam, antes de empurrar
+# para o registry. Sem hot reload, sem volume de codigo.
+#
+# Conecta no banco do Swarm em cloud.nexasource.com.br (mesmo do
+# desenvolvimento) — variaveis vem do .env da raiz.
+# =============================================================================
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: crm-nexa-api:local
+    environment:
+      NODE_ENV: production
+      API_PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_ADMIN_URL: ${DATABASE_ADMIN_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+    ports:
+      - "3001:3001"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: crm-nexa-web:local
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_BASE_URL: http://api:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
