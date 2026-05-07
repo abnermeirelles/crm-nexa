@@ -27,11 +27,11 @@ CRM Nexa — SaaS multi-tenant comercial de CRM + mídias sociais, voltado a var
 
 ```
 apps/
-  api/          ← NestJS (a criar na Fase 0.4)
+  api/          ← NestJS (criado na Fase 0.4)
   web/          ← Next.js (a criar na Fase 0.5)
 packages/
   database/     ← Prisma schema + migrations + seed (criado na Fase 0.3)
-  shared/       ← Auth utils + tipos compartilhados (a criar na Fase 0.4)
+  shared/       ← Auth utils (argon2, refresh tokens) — criado na Fase 0.4
 docs/           ← Documentação canônica (versionada em git)
 ```
 
@@ -53,8 +53,8 @@ A documentação **vive neste repo**, em `docs/`. Toda mudança de doc passa por
 | 0.1 — Setup ambiental | ✅ Concluída |
 | 0.2 — Repo + monorepo | ✅ Concluída |
 | 0.3 — Banco + Prisma + Multi-tenant RLS | ✅ Concluída (PR #1) |
-| 0.4 — API NestJS + Auth + Tenancy | ⏳ **Próxima** |
-| 0.5 — Web Next.js + Login | Pendente |
+| 0.4 — API NestJS + Auth + Tenancy | ✅ Concluída |
+| 0.5 — Web Next.js + Login | ⏳ **Próxima** |
 | 0.6 — CI/CD + primeiro deploy | Pendente |
 
 ## Endpoints e paths importantes
@@ -80,12 +80,15 @@ A documentação **vive neste repo**, em `docs/`. Toda mudança de doc passa por
 ## Como rodar localmente
 
 ```bash
-pnpm install
-cp .env.example .env
-# Preencha .env com credenciais reais (vide docs/03-fase-0-fundacao.md)
-pnpm -F @crm-nexa/database db:generate
-pnpm dev
+pnpm install                                # roda prepare da @crm-nexa/shared (build)
+cp .env.example .env                        # preencha com credenciais reais
+pnpm -F @crm-nexa/database db:generate      # gera o Prisma Client
+pnpm -F @crm-nexa/database db:migrate:deploy # aplica migrations (uma vez)
+pnpm -F @crm-nexa/database db:seed          # cria tenant 'dev' + owner@nexa.dev/dev123!
+pnpm -F @crm-nexa/api dev                   # API em http://localhost:3001
 ```
+
+Endpoints atuais: `GET /health`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /me`.
 
 ## Restrições importantes
 

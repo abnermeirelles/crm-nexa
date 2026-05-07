@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "prisma": {
+    "seed": "dotenv -e ../../.env -- tsx src/seed.ts"
+  },
   "scripts": {
     "db:format": "prisma format",
     "db:validate": "dotenv -e ../../.env -- prisma validate",
@@ -21,6 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@crm-nexa/shared": "workspace:*",
     "@prisma/client": "^6.0.0"
   },
   "devDependencies": {
