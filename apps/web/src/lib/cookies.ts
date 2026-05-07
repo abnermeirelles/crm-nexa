@@ -1,8 +1,8 @@
 import { cookies } from 'next/headers';
 import { isProd } from '@/env';
+import { ACCESS_COOKIE, REFRESH_COOKIE } from './cookie-names';
 
-export const ACCESS_COOKIE = 'nexa_access';
-export const REFRESH_COOKIE = 'nexa_refresh';
+export { ACCESS_COOKIE, REFRESH_COOKIE };
 
 const ACCESS_MAX_AGE_S = 60 * 30; // 30min — slightly mais que o TTL do JWT (15min)
 const REFRESH_MAX_AGE_S = 60 * 60 * 24 * 7; // 7d

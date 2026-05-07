@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import {
   Card,
   CardContent,
@@ -6,29 +5,65 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { getAccessToken } from '@/lib/cookies';
+import { Button } from '@/components/ui/button';
+import { apiMe } from '@/lib/api';
+import { logoutAction } from './actions';
 
-// Placeholder — sera substituido pela versao real (com /me + logout)
-// na sub-fase 0.5.C.
+export const metadata = {
+  title: 'Dashboard — CRM Nexa',
+};
+
 export default async function DashboardPage() {
-  const token = await getAccessToken();
-  if (!token) redirect('/login');
+  const me = await apiMe();
+
+  const lastLogin = me.lastLoginAt
+    ? new Date(me.lastLoginAt).toLocaleString('pt-BR')
+    : '—';
 
   return (
-    <main className="flex flex-1 items-center justify-center p-6">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Dashboard</CardTitle>
-          <CardDescription>
-            Você está autenticado. Conteúdo real (dados de /me + logout) entra
-            na sub-fase 0.5.C.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          Cookie <code className="font-mono">nexa_access</code> presente —
-          tamanho: {token.length} chars.
-        </CardContent>
-      </Card>
-    </main>
+    <div className="flex flex-1 flex-col">
+      <header className="flex items-center justify-between border-b px-6 py-4">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            {me.tenant.name}
+          </p>
+          <p className="text-sm font-medium">{me.name}</p>
+        </div>
+        <form action={logoutAction}>
+          <Button type="submit" variant="outline" size="sm">
+            Sair
+          </Button>
+        </form>
+      </header>
+
+      <main className="flex flex-1 items-start justify-center p-6">
+        <Card className="w-full max-w-2xl">
+          <CardHeader>
+            <CardTitle>Bem-vindo, {me.name}</CardTitle>
+            <CardDescription>
+              Você está autenticado no CRM Nexa.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <Field label="Usuário" value={me.email} />
+            <Field label="Papel" value={me.role} />
+            <Field label="Tenant" value={`${me.tenant.name} (${me.tenant.slug})`} />
+            <Field label="Plano" value={me.tenant.plan} />
+            <Field label="Último login" value={lastLogin} />
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <span className="font-medium">{value}</span>
+    </div>
   );
 }
