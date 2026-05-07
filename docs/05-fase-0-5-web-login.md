@@ -1,9 +1,9 @@
 # 05 — Fase 0.5: Web Next.js + Login
 
-> **Duração estimada:** 2 a 3 dias (solo dev)
+> **Duração estimada:** 2 a 3 dias (solo dev) — **executada em 2026-05-07**
 > **Pré-requisitos:** Fase 0.4 concluída (API com `/auth/*` e `/me` funcionando).
 > **Última atualização:** 2026-05-07
-> **Status:** Pendente — não iniciada
+> **Status:** ✅ Concluída — vide §10 (Histórico de execução)
 
 ---
 
@@ -224,16 +224,16 @@ apps/
 
 ## 8. Definição de "Fase 0.5 concluída"
 
-- [ ] `pnpm -F @crm-nexa/web dev` sobe sem erro em `:3000`
-- [ ] `/login` renderiza, valida campos, mostra erros
-- [ ] Login com `owner@nexa.dev` / `dev123!` redireciona para `/dashboard`
-- [ ] `/dashboard` mostra user + tenant corretamente
-- [ ] Cookies `nexa_access` e `nexa_refresh` setados como httpOnly (verificado via DevTools)
-- [ ] Acesso a `/dashboard` sem cookies → redireciona para `/login`
-- [ ] Logout limpa cookies e redireciona para `/login`
-- [ ] Forçando `JWT_ACCESS_TTL=15s` na API e recarregando `/dashboard` após expirar → renovação automática (sem voltar pra login)
+- [x] `pnpm -F @crm-nexa/web dev` sobe sem erro em `:3000`
+- [x] `/login` renderiza, valida campos, mostra erros
+- [x] Login com `owner@nexa.dev` / `dev123!` redireciona para `/dashboard` (validação manual no browser)
+- [x] `/dashboard` mostra user + tenant corretamente
+- [x] Cookies `nexa_access` e `nexa_refresh` setados como httpOnly (verificado via curl Set-Cookie)
+- [x] Acesso a `/dashboard` sem cookies → redireciona para `/login` com `?next=<path>`
+- [x] Logout limpa cookies e redireciona para `/login` (logoutAction)
+- [x] Forçando `JWT_ACCESS_TTL=60s` na API e simulando access expirado (forjado com `exp=1`) → middleware refrescou transparentemente, rotação detectada via session id
 - [ ] PR aberto, mergeado, branch limpa
-- [ ] `docs/03` marca 0.5 ✅, este doc atualiza com histórico de execução
+- [x] `docs/03` marca 0.5 ✅, este doc atualiza com histórico de execução
 
 ---
 
@@ -246,3 +246,54 @@ apps/
 - Internacionalização (i18n) — só pt-BR por enquanto
 - Componentes do CRM em si (contatos, deals, pipeline) — Fase 1+
 - Storybook ou design system — pós-MVP
+
+---
+
+## 10. Histórico de execução
+
+### 0.5.A — Bootstrap `apps/web` (commit `0884065`)
+
+- `apps/web` scaffolded via `create-next-app` (Next 16.2.4, React 19.2.4, Tailwind v4, ESLint 9, TS 5.7, App Router, src/, alias `@/*`).
+- Integrado ao monorepo como `@crm-nexa/web` (workspace dep `@crm-nexa/shared`, scripts compatíveis com turbo).
+- shadcn/ui inicializado (estilo `base-nova`, baseColor `neutral`, lucide). Componentes adicionados: `button`, `input`, `label`, `card`. **Atenção:** este shadcn novo (v4) usa `@base-ui/react` em vez do Radix direto; `Button` não suporta `asChild` — usar `buttonVariants()` na className.
+- Removidos artefatos do scaffold que conflitavam com a raiz: `apps/web/pnpm-workspace.yaml`, `apps/web/AGENTS.md`, `apps/web/CLAUDE.md`.
+- `tsconfig.json` próprio (não estende a base — Next exige `module: esnext` + `moduleResolution: bundler` + `jsx: react-jsx`); strict-flags da base mantidos.
+- `src/env.ts` valida `API_URL`/`NODE_ENV` via Zod.
+- `pnpm-workspace.yaml`: liberados builds de `sharp` e `unrs-resolver`.
+
+### 0.5.B — `/login` + server action + cookies httpOnly (commit `9e39cc8`)
+
+- `lib/cookies.ts`: `setSessionCookies`, `clearSessionCookies`, `getAccessToken`, `getRefreshToken`. `nexa_access` (30min) e `nexa_refresh` (7d), httpOnly + sameSite=lax + secure em prod.
+- `lib/api.ts`: `apiLogin` + classe `ApiError`.
+- `/login` Server Component + `login-form` Client (`useActionState`) + server action.
+- Server action: Zod schema espelha `LoginDto` da API. Erros específicos: `TENANT_REQUIRED` → instrução; 401 → "E-mail ou senha inválidos"; 400 → genérica; outros → genérica.
+- `LoginState`/`initialLoginState` em `state.ts` separado — arquivos `'use server'` só podem exportar funções async (descoberto via erro 500).
+- `/dashboard` placeholder lê `nexa_access`, redireciona se ausente.
+
+### 0.5.C — Middleware + `/dashboard` real + logout (commit `f3e49d7`)
+
+- `lib/cookie-names.ts` (edge-safe) split de `lib/cookies.ts` para o middleware importar sem trazer `next/headers`.
+- `middleware.ts`: protege `/dashboard` e sub-rotas. Sem `nexa_refresh` → 307 → `/login?next=<path>`. Matcher exclui `_next/*` e estáticos.
+- `apiServerFetch<T>` injeta Bearer access da cookie. Em 401, `redirect('/login')` apenas (RSC não pode modificar cookies — bug encontrado e corrigido durante a execução: `clearSessionCookies()` em RSC quebra com erro de framework).
+- `apiMe()` tipado para `GET /me`.
+- `/dashboard` real: header com tenant + nome + botão Sair; Card com 5 campos (`Usuário`, `Papel`, `Tenant`, `Plano`, `Último login`).
+- `logoutAction`: best-effort `POST /auth/logout` na API + `clearSessionCookies` + redirect `/login`.
+
+### 0.5.D — Refresh proativo no middleware (commit `63abe38`)
+
+- `lib/jwt-exp.ts` (edge-safe): decode do payload do JWT via `atob` (sem verificar assinatura — uso restrito a checar `exp`).
+- Middleware ganhou refresh proativo: se há `nexa_refresh` mas `nexa_access` ausente OU expirando em <30s, chama `POST /auth/refresh`, reescreve o header `Cookie` da request (para o RSC desta mesma cycle enxergar) + Set-Cookie na response. Falha → redirect `/login` com cookies limpos.
+- Por que no middleware: Next 15+ proíbe modificar cookies fora de Server Actions/Route Handlers. Middleware é o único local viável para refresh transparente antes do RSC rodar.
+- E2E validado em 3 cenários (access fresco passa direto / expirado refresca + rotaciona / refresh inválido limpa+redirect).
+
+### 0.5.E — Polish + docs (commit pendente)
+
+- Login respeita `?next=<path>` setado pelo middleware: page lê `searchParams`, valida (rejeita `//` para evitar open-redirect), passa como hidden input para o form; server action redireciona para o `next` saneado ou fallback `/dashboard`.
+- `/dashboard/error.tsx` boundary client-component — captura falhas não-401 do `/me` (bug de API, network, 500) e mostra UI de retry com `reset()`.
+
+### Pendências técnicas para fases futuras (registradas durante a 0.5)
+
+- **Refresh com lock anti-race-condition** — duas requests paralelas com access expirado podem disparar 2 refreshes; o segundo pega refresh já rotacionado e dispara theft detection. Hoje é raro (server-rendered single page) mas com client navigation paralela pode acontecer. Pós-MVP.
+- **Loading skeleton no `/dashboard`** durante o `await apiMe()` — Next streamea por default, mas `<Suspense>` com skeleton melhora UX. Adicionar quando o dashboard tiver mais conteúdo.
+- **Toast/notificação de "sessão expirou"** quando o usuário é redirecionado para `/login` a partir de uma rota protegida — hoje é silencioso.
+- **Validar comportamento em `secure: true`** (produção HTTPS) — sameSite=lax + secure pode comportar diferente em fluxo cross-site se algum dia houver iframe/SSO.

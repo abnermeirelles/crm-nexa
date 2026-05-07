@@ -279,7 +279,14 @@ Checklist final, todos obrigatórios:
 - E2E manual: critérios §1 do plano todos verdes
 - Detalhes e histórico em [`docs/04-fase-0-4-api-auth.md`](04-fase-0-4-api-auth.md) §10
 
-### 0.5 — Web Next.js + Login ⏳ pendente
+### 0.5 — Web Next.js + Login ✅ concluída em 2026-05-07
+
+- `apps/web` (Next.js 16 + React 19 + Tailwind v4 + shadcn estilo `base-nova`) integrado ao monorepo
+- Sessão server-side via cookies httpOnly (`nexa_access`, `nexa_refresh`) — cliente nunca toca tokens
+- `/login` com Server Action + Zod, mensagens de erro humanas, defesa contra open-redirect via `?next`
+- `/dashboard` autenticado renderiza `/me` com user + tenant + plano; logout via Server Action
+- Middleware refresca tokens proativamente quando access está expirando (<30s) — RSC sempre vê access fresco
+- Detalhes e histórico em [`docs/05-fase-0-5-web-login.md`](05-fase-0-5-web-login.md) §10
 ### 0.6 — CI/CD + Primeiro deploy ⏳ pendente
 
 ---
