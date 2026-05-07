@@ -269,9 +269,15 @@ Checklist final, todos obrigatórios:
 - Validado via 5 testes manuais de isolamento — RLS bloqueia leitura, INSERT e UPDATE cross-tenant via `crm_app`
 - PR #1 squash mergeado na main
 
-### 0.4 — API NestJS + Auth ⏳ próxima
+### 0.4 — API NestJS + Auth ✅ concluída em 2026-05-07
 
-Detalhes em [`docs/04-fase-0-4-api-auth.md`](04-fase-0-4-api-auth.md).
+- `apps/api` (NestJS 11 + Express + Pino) e `packages/shared` (argon2 + token utils) criados
+- Multi-tenancy automática via `nestjs-cls` + extensão Prisma (`SET LOCAL app.current_tenant_id`); RLS isola por JWT
+- Auth completa: `/auth/login`, `/auth/refresh` (rotação detectiva), `/auth/logout`, `/me`, `/health`
+- `JwtAuthGuard` global; `@Public()` para rotas anônimas
+- Seed em TS (`packages/database/src/seed.ts`) cria `dev` + `owner@nexa.dev` / `dev123!`
+- E2E manual: critérios §1 do plano todos verdes
+- Detalhes e histórico em [`docs/04-fase-0-4-api-auth.md`](04-fase-0-4-api-auth.md) §10
 
 ### 0.5 — Web Next.js + Login ⏳ pendente
 ### 0.6 — CI/CD + Primeiro deploy ⏳ pendente

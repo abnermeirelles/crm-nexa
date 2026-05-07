@@ -1,9 +1,9 @@
 # 04 — Fase 0.4: API NestJS + Auth + Tenancy
 
-> **Duração estimada:** 3 a 4 dias (solo dev)
+> **Duração estimada:** 3 a 4 dias (solo dev) — **executada em 2026-05-07**
 > **Pré-requisitos:** Fase 0.3 concluída (banco multi-tenant funcionando com RLS).
-> **Última atualização:** 2026-05-06
-> **Status:** Pendente — não iniciada
+> **Última atualização:** 2026-05-07
+> **Status:** ✅ Concluída — vide §10 (Histórico de execução)
 
 ---
 
@@ -243,17 +243,17 @@ packages/
 
 ## 8. Definição de "Fase 0.4 concluída"
 
-- [ ] `pnpm -F @crm-nexa/api dev` sobe a API em watch sem erro
-- [ ] `curl http://localhost:3001/health` retorna 200 com `{ status: "ok", db: "ok" }`
-- [ ] `pnpm -F @crm-nexa/database db:seed` cria tenant + owner sem erro
-- [ ] Login com `owner@nexa.dev` / `dev123!` retorna 200 + tokens
-- [ ] `GET /me` com access token retorna user + tenant corretos
-- [ ] `GET /me` sem token ou com token inválido retorna 401
-- [ ] `POST /auth/refresh` rotaciona corretamente e revoga o anterior
-- [ ] Tentar usar refresh já revogado retorna 401 + revoga toda cadeia (sessões deletadas/revogadas)
-- [ ] Endpoint de teste do tenant context retorna apenas dados do tenant logado
+- [x] `pnpm -F @crm-nexa/api dev` sobe a API em watch sem erro
+- [x] `curl http://localhost:3001/health` retorna 200 com `{ status: "ok", db: "ok" }`
+- [x] `pnpm -F @crm-nexa/database db:seed` cria tenant + owner sem erro
+- [x] Login com `owner@nexa.dev` / `dev123!` retorna 200 + tokens
+- [x] `GET /me` com access token retorna user + tenant corretos
+- [x] `GET /me` sem token ou com token inválido retorna 401
+- [x] `POST /auth/refresh` rotaciona corretamente e revoga o anterior
+- [x] Tentar usar refresh já revogado retorna 401 + revoga toda cadeia (sessões deletadas/revogadas)
+- [x] Endpoint de teste do tenant context retorna apenas dados do tenant logado (substituído pelo `/me` na 0.4.D — consulta passa pelo Prisma extension e RLS isola por JWT.tenantId)
 - [ ] PR aberto, mergeado, branch limpa
-- [ ] Documentação atualizada (`docs/03` marca 0.4 ✅, este doc atualiza status)
+- [x] Documentação atualizada (`docs/03` marca 0.4 ✅, este doc atualiza status)
 
 ---
 
@@ -268,3 +268,52 @@ Para evitar escopo inflado:
 - Refresh token rotation com detecção avançada (e-mail de alerta) — pós-MVP
 - Rate limiting em `/auth/login` — adicionar antes do beta (importante, mas não bloqueador)
 - Sessão concurrent limit — pós-MVP
+
+---
+
+## 10. Histórico de execução
+
+### 0.4.A — Bootstrap `apps/api` + `packages/shared` (commit `5de354b`)
+
+- `apps/api` (NestJS 11 + Express + Pino) com `/health` público, `helmet`, `ValidationPipe` global e `PrismaService` global.
+- `packages/shared` com `hashPassword`/`verifyPassword` (argon2id) e `generateRefreshToken`/`hashRefreshToken`/`verifyRefreshToken`.
+- Pino redact configurado para `password`, `passwordHash`, `refreshToken*`, `accessToken`, `Authorization`, `Cookie`, `Set-Cookie`.
+- `pnpm-workspace.yaml`: liberado postinstall do `@nestjs/core` (banner inofensivo).
+
+### 0.4.B — Tenancy via `nestjs-cls` + Prisma extension (commit `19c43de`)
+
+- `ClsModule` global; chaves `tenantId`/`userId`/`role`/`sid` em [`common/cls/keys.ts`](../apps/api/src/common/cls/keys.ts).
+- `PrismaService` runtime conecta como **`crm_app`** (override `datasourceUrl: DATABASE_URL`) — schema.prisma continua com `DATABASE_ADMIN_URL` para Prisma CLI/migrations. Sem esse override, `crm_admin` (BYPASSRLS) seria usado e RLS ficaria inerte.
+- Extensão `query.$allModels.$allOperations` envolve cada operação numa transação Prisma `[set_config('app.current_tenant_id', $1, TRUE), query(args)]` quando `tenantId` está na CLS. Sem CLS → query passa direto e RLS retorna 0 rows.
+- `unscoped()` exposto para fluxos legitimamente cross-tenant (health check; admin operations).
+- Decorators `@CurrentUser()` e `@CurrentTenant()` adicionados.
+- Provado via `DevTenantMiddleware` + `/_dev/tenants` (substituídos pelo `JwtAuthGuard` na 0.4.C).
+
+### 0.4.C — Auth module (commit `f5b2755`)
+
+- **Tokens:** access JWT HS256 (TTL 15min, claims `{sub, tenantId, role, sid}`) + refresh opaco no formato `<sessionId>.<32_byte_hex>` com hash argon2 em `user_sessions.refresh_token_hash`.
+- **Login:** lookup via `PrismaAdminService` (BYPASSRLS), verify-dummy contra timing attack quando user não existe; retorna 400 `TENANT_REQUIRED` se mesmo email casa em múltiplos tenants; valida `tenant.status='active'` e `deletedAt`.
+- **Refresh:** rotação detectiva — reuso de refresh já revogado revoga **toda a cadeia de sessões** do user e retorna 401.
+- **Logout:** autenticado, revoga sessão pelo `sid` do JWT.
+- `JwtAuthGuard` global via `APP_GUARD`; rotas públicas marcadas com `@Public()`.
+- Estratégia passport-jwt popula CLS — substituiu o `DevTenantMiddleware` da 0.4.B.
+- **Mudança colateral importante:** `packages/shared` passou a compilar para `dist/` (Node 22 strip-types não auto-mapeia `.js`→`.ts` em ESM imports relativos). `apps/api/tsconfig.json` ganhou `tsBuildInfoFile: "./dist/.tsbuildinfo"` para corrigir bug de cache stale.
+
+### 0.4.D — `/me` + seed em TS + automação de build (commit `cc2fb96`)
+
+- `GET /me` autenticado em [`modules/users`](../apps/api/src/modules/users/) — usa `PrismaService.client` (tenant-scoped via JWT→CLS→Prisma extension).
+- `packages/database/src/seed.ts` idempotente: upsert tenant `dev` + user `owner@nexa.dev` (hash de `dev123!`). Configurado em `package.json#prisma.seed`.
+- **Automação de build da `shared`:**
+  - `prepare` script roda `tsc` em `pnpm install`.
+  - `apps/api` script `dev` força `pnpm -F @crm-nexa/shared build &&` antes do `nest start --watch`.
+  - `turbo.json`: `dev`/`build`/`lint`/`test`/`typecheck`/`db:seed` com `dependsOn: ["^build"]`.
+  - `shared` ganhou `dev` (tsc --watch) para iteração opcional.
+- **E2E completo executado** — todos os 11 itens do §8 verificados.
+
+### Pendências técnicas para fases futuras (registradas durante a 0.4)
+
+- **Rate limiting em `/auth/login`** (e endpoints sensíveis em geral) — adicionar antes do beta.
+- **MFA (TOTP)** + **recuperação de senha por e-mail** — antes do primeiro cliente pago.
+- **Limite de sessões concorrentes** por user — pós-MVP.
+- **Acesso a `tenant_id` em logs estruturados** (req-bound) — útil quando o volume crescer; hoje os logs não trazem tenant.
+- **AuditLog** — não foi populado nesta fase. Login/logout/refresh deveriam virar entradas em `audit_log` antes do beta.
