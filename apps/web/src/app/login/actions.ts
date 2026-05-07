@@ -16,6 +16,15 @@ const LoginSchema = z.object({
     .transform((v) => (v && v.length > 0 ? v : undefined)),
 });
 
+// Aceita apenas paths internos (prefixo /, sem // que sairia para outro
+// host). Caso contrario cai no fallback /dashboard. Defesa contra
+// open-redirect via parametro `next`.
+function safeNext(raw: FormDataEntryValue | null): string {
+  if (typeof raw !== 'string') return '/dashboard';
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/dashboard';
+  return raw;
+}
+
 export async function loginAction(
   _prev: LoginState,
   formData: FormData,
@@ -64,5 +73,5 @@ export async function loginAction(
     };
   }
 
-  redirect('/dashboard');
+  redirect(safeNext(formData.get('next')));
 }

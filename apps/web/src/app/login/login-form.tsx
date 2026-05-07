@@ -7,11 +7,13 @@ import { Label } from '@/components/ui/label';
 import { loginAction } from './actions';
 import { initialLoginState } from './state';
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState(loginAction, initialLoginState);
 
   return (
     <form action={action} className="flex flex-col gap-4">
+      {next && <input type="hidden" name="next" value={next} />}
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="email">E-mail</Label>
         <Input

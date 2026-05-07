@@ -28,7 +28,7 @@ CRM Nexa — SaaS multi-tenant comercial de CRM + mídias sociais, voltado a var
 ```
 apps/
   api/          ← NestJS (criado na Fase 0.4)
-  web/          ← Next.js (a criar na Fase 0.5)
+  web/          ← Next.js + Tailwind + shadcn (criado na Fase 0.5)
 packages/
   database/     ← Prisma schema + migrations + seed (criado na Fase 0.3)
   shared/       ← Auth utils (argon2, refresh tokens) — criado na Fase 0.4
@@ -54,8 +54,8 @@ A documentação **vive neste repo**, em `docs/`. Toda mudança de doc passa por
 | 0.2 — Repo + monorepo | ✅ Concluída |
 | 0.3 — Banco + Prisma + Multi-tenant RLS | ✅ Concluída (PR #1) |
 | 0.4 — API NestJS + Auth + Tenancy | ✅ Concluída |
-| 0.5 — Web Next.js + Login | ⏳ **Próxima** |
-| 0.6 — CI/CD + primeiro deploy | Pendente |
+| 0.5 — Web Next.js + Login | ✅ Concluída |
+| 0.6 — CI/CD + primeiro deploy | ⏳ **Próxima** |
 
 ## Endpoints e paths importantes
 
@@ -85,10 +85,12 @@ cp .env.example .env                        # preencha com credenciais reais
 pnpm -F @crm-nexa/database db:generate      # gera o Prisma Client
 pnpm -F @crm-nexa/database db:migrate:deploy # aplica migrations (uma vez)
 pnpm -F @crm-nexa/database db:seed          # cria tenant 'dev' + owner@nexa.dev/dev123!
-pnpm -F @crm-nexa/api dev                   # API em http://localhost:3001
+pnpm -F @crm-nexa/api dev                   # API em http://localhost:3001 (terminal 1)
+pnpm -F @crm-nexa/web dev                   # Web em http://localhost:3000 (terminal 2)
 ```
 
-Endpoints atuais: `GET /health`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /me`.
+API: `GET /health`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /me`.
+Web: `/` (landing), `/login`, `/dashboard` (protegido por middleware).
 
 ## Restrições importantes
 
