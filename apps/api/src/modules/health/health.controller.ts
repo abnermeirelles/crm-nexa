@@ -8,7 +8,7 @@ export class HealthController {
   @Get()
   async check(): Promise<{ status: 'ok'; db: 'ok' }> {
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
+      await this.prisma.unscoped().$queryRaw`SELECT 1`;
     } catch {
       throw new ServiceUnavailableException({ status: 'degraded', db: 'down' });
     }
