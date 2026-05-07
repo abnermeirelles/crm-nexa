@@ -8,6 +8,7 @@
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },
@@ -20,6 +21,10 @@
     },
     "typecheck": {
       "dependsOn": ["^build"]
+    },
+    "db:seed": {
+      "dependsOn": ["^build"],
+      "cache": false
     },
     "clean": {
       "cache": false

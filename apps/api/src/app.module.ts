@@ -7,6 +7,7 @@ import { LoggerModule } from './common/logger/logger.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { UsersModule } from './modules/users/users.module';
 import { loadConfiguration } from './config/configuration';
 
 @Module({
@@ -21,6 +22,7 @@ import { loadConfiguration } from './config/configuration';
     PrismaModule,
     AuthModule,
     HealthModule,
+    UsersModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
