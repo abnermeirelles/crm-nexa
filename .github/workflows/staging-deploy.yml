@@ -114,8 +114,12 @@ jobs:
 
       - name: Run migrate deploy
         env:
-          DATABASE_ADMIN_URL: ${{ secrets.STAGING_DATABASE_ADMIN_URL }}
-        run: pnpm -F @crm-nexa/database exec prisma migrate deploy
+          RAW_URL: ${{ secrets.STAGING_DATABASE_ADMIN_URL }}
+        run: |
+          # Tolera secret salvo com aspas surround (copy-paste do .env)
+          URL="${RAW_URL%\"}"
+          URL="${URL#\"}"
+          DATABASE_ADMIN_URL="$URL" pnpm -F @crm-nexa/database exec prisma migrate deploy
 
   deploy:
     name: Deploy via Portainer webhook
