@@ -7,7 +7,6 @@
     "build": "nest build",
     "dev": "pnpm -F @crm-nexa/shared build && dotenv -e ../../.env -- nest start --watch",
     "start": "dotenv -e ../../.env -- node dist/main.js",
-    "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
