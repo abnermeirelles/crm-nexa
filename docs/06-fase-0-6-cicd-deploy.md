@@ -1,9 +1,9 @@
 # 06 — Fase 0.6: CI/CD + Primeiro Deploy
 
-> **Duração estimada:** 2 a 3 dias (solo dev)
+> **Duração estimada:** 2 a 3 dias (solo dev) — **executada em 2026-05-07/08**
 > **Pré-requisitos:** Fases 0.4 e 0.5 concluídas (API e Web rodando localmente).
-> **Última atualização:** 2026-05-07
-> **Status:** Pendente — não iniciada
+> **Última atualização:** 2026-05-08
+> **Status:** ⏳ Em validação — aguardando primeiro deploy real (vide §10)
 
 ---
 
@@ -273,19 +273,19 @@ compose.local.yml               ← validar imagens localmente
 
 ## 8. Definição de "Fase 0.6 concluída"
 
-- [ ] `apps/api/Dockerfile` e `apps/web/Dockerfile` buildam localmente sem warning
-- [ ] `compose.local.yml` sobe ambos os containers e responde nos endpoints
-- [ ] `deploy/stack-staging.yml` validado com `docker stack config -c stack-staging.yml`
-- [ ] Secrets criados no Swarm (lista em `deploy/secrets.md`)
-- [ ] DNS apontando para o Swarm host
-- [ ] Stack criada no Portainer via Repository mode + webhooks de cada serviço gerados
-- [ ] Workflow do GitHub Actions com 4 jobs (validate, build-push, migrate, deploy via webhook) verde no primeiro push
+- [x] `apps/api/Dockerfile` e `apps/web/Dockerfile` buildam localmente sem warning
+- [x] `compose.local.yml` sobe ambos os containers e responde nos endpoints
+- [x] `deploy/stack-staging.yml` validado com `docker stack config -c`
+- [ ] Secrets criados no Swarm (manual, 4 secrets via Portainer UI)
+- [x] DNS apontando para o Swarm host (já existia)
+- [ ] Stack criada no Portainer via Repository mode + webhooks gerados
+- [ ] Workflow do GitHub Actions verde no push para `main` (validate/build-push/migrate/deploy)
 - [ ] `https://api.crm-dev.nexasource.com.br/health` → 200 com cert válido
 - [ ] `https://crm-dev.nexasource.com.br/login` carrega
 - [ ] Login real no browser funciona com cookies `Secure`
 - [ ] PR aberto, mergeado, branch limpa
-- [ ] `docs/03` marca 0.6 ✅, este doc atualizado com §10
-- [ ] CLAUDE.md atualizado com URLs de staging
+- [x] `docs/03` em sincronia com este doc; este doc atualizado com §10
+- [x] CLAUDE.md atualizado com URLs de staging
 
 ---
 
@@ -303,3 +303,67 @@ Para evitar escopo inflado:
 - **CDN para assets do Next.js** — Traefik serve direto; Cloudflare/etc fica para prod
 - **Secrets rotation automatizado** — manual via `docker secret` por enquanto
 - **PR previews (deploy de cada PR num namespace)** — luxury feature, pós-MVP
+
+---
+
+## 10. Histórico de execução
+
+### 0.6.A — Dockerfiles + smoke local (commit `54a8016`)
+
+- `apps/api/Dockerfile` multi-stage (base → deps → build → runtime). Base `node:22-slim` (Debian) — alpine quebra o Prisma engine que é compilado para `debian-openssl-3.0.x`.
+- `apps/web/Dockerfile` usando Next.js `output: 'standalone'` + `outputFileTracingRoot` para monorepo. `next.config.ts` ganhou essas configs.
+- `compose.local.yml` na raiz (apenas para validar imagens; não substitui `pnpm dev`).
+- `.dockerignore` em ambas as apps.
+- Removida dep não-usada `@crm-nexa/shared` do `apps/web/package.json`.
+
+**Bugs descobertos durante o build:**
+- `pnpm install --prod` precisa `CI=true` sem TTY (`ENV CI=true` resolve).
+- node_modules dos workspace packages não foram copiados → @prisma/client não resolvia. Fix: COPY explícito de cada `<pkg>/node_modules`.
+- `node:22-alpine` quebra Prisma — schema.prisma tem binaryTargets `["native", "debian-openssl-3.0.x"]`, musl não casa.
+
+**Smoke E2E:** `/health` 200, `/login` renderiza, `/dashboard` com cookies via API real funciona.
+
+**Tamanho:** api 1GB, web 437MB. Aceitável; otimização fica para depois.
+
+### 0.6.B — Stack file Swarm + Traefik (commit `289cf3b`)
+
+- `deploy/stack-staging.yml` Compose v3 para Swarm:
+  - api em `public_proxy` + `infra_internal`; web só em `public_proxy`
+  - web → api via DNS overlay `http://api:3001`
+  - Traefik labels com `Host(crm-dev.*)` + `Host(api.crm-dev.*)`, `certresolver=le`, entrypoint `websecure`
+  - `update_config.order: start-first` + `failure_action: rollback` (deploy zero-downtime)
+  - Healthchecks `/health` e `/`
+  - Resource limits 0.5 CPU / 512M cada
+  - Secrets externos referenciando `nexa_*` (mountados em `/run/secrets/`)
+- `deploy/README.md` com topologia, procedimento, rollback, debug, avaliação de segurança.
+- Validação: `docker stack config -c` parsa sem erros.
+
+### 0.6.C — GitHub Actions workflows (commit `babd02f`)
+
+- `.github/workflows/pr-validate.yml`: `pull_request` → install + prisma generate (URL placeholder) + turbo typecheck/lint/build.
+- `.github/workflows/staging-deploy.yml`: `push: main` ou `workflow_dispatch` →
+  1. **validate** (mesmos passos do PR)
+  2. **build-push**: ghcr login, buildx push para api e web (tags `:latest` + `:sha-<7>`), cache GHA por scope, `provenance: false`
+  3. **migrate**: install filtered + `prisma migrate deploy` contra `STAGING_DATABASE_ADMIN_URL`
+  4. **deploy**: POST nos webhooks Portainer + loop curl `/health` por até 150s
+- Validação: `actionlint` (shellcheck SC2086 corrigido em `$GITHUB_OUTPUT`).
+
+### 0.6.D — Convenção `*_FILE` para Swarm secrets (commit `f2fa222`)
+
+- `apps/api/src/bootstrap/load-secrets.ts`: side-effect on import, escaneia `process.env` por chaves `*_FILE`, lê o arquivo apontado, popula `process.env[BASE]`. Strip de whitespace trailing.
+- `apps/api/src/main.ts` reorganizado: `import './bootstrap/load-secrets'` posicionado entre `reflect-metadata` e `@nestjs/core` para garantir ordem de execução em CJS.
+- Validação: container com `-v .secrets-local:/run/secrets:ro` + env `*_FILE` apontando para os arquivos → API saudável, login E2E ok sem expor vars no env.
+
+### 0.6.E — PR + bootstrap manual + smoke E2E (commit pendente)
+
+- Atualizado `deploy/README.md` com a sequência exata (resolve a galinha-e-ovo entre stack Portainer / imagens ghcr.io / secrets GH Actions / webhooks).
+- PR aberto: validate-only roda primeiro.
+- Pós-merge: bootstrap manual em 7 passos (4 secrets Swarm → 1 secret GH → merge → criar stack → smoke → 2 webhooks → 2 secrets GH → re-disparar workflow).
+
+### Pendências técnicas registradas durante a 0.6
+
+- **Tamanho da imagem da API (~1GB)** — pnpm deploy ou multistage mais agressivo reduz para ~250MB. Otimização para depois.
+- **Smoke test pós-deploy** poderia verificar versão (ex.: `/health` retornando `{version: "<sha7>"}`) para confirmar que o deploy de fato pegou. Hoje só verifica que **algum** deploy responde.
+- **Backup pré-migrate** — antes do beta, fazer dump do banco antes de cada `prisma migrate deploy`.
+- **Recriar imagem periodicamente** para pegar patches do Debian (gnutls28 e outros) — agendar workflow semanal de rebuild.
+- **CVE acompanhamento** — gnutls28 4 CVEs HIGH sem patch upstream. Sem risco prático (Node não usa gnutls), mas revisar quando Debian liberar fix.

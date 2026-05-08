@@ -20,9 +20,13 @@ Tudo que descreve como o CRM Nexa roda em staging (e futuramente em prod).
 
 ## Como deployar (pela primeira vez)
 
-### 1. Criar secrets no Swarm via Portainer
+> **Importante:** existe ovo-e-galinha entre os 4 elementos (secrets do Swarm, stack do Portainer, imagens em ghcr.io, secrets do GitHub Actions). A ordem abaixo resolve sem retrabalho.
 
-Em Portainer → Secrets → Add secret. Crie cada um e cole o valor real:
+### Antes de fazer merge do PR `feat/cicd-deploy`
+
+#### 1. Criar secrets no Swarm via Portainer
+
+Portainer → **Secrets** → Add secret. Cada um, cole o valor real:
 
 | Nome do secret | Conteúdo |
 |---|---|
@@ -33,26 +37,75 @@ Em Portainer → Secrets → Add secret. Crie cada um e cole o valor real:
 
 > Os valores em `.env` local servem como referência mas **não devem ser reutilizados em prod** quando chegarmos lá.
 
-### 2. Criar a stack no Portainer
+#### 2. Configurar DNS (já feito)
+
+A records apontando para o IP do Swarm:
+- `crm-dev.nexasource.com.br`
+- `api.crm-dev.nexasource.com.br`
+
+Traefik gera Let's Encrypt automaticamente na primeira request HTTPS.
+
+#### 3. Adicionar 1 secret no GitHub Actions
+
+Repo → Settings → Secrets and variables → Actions → New repository secret:
+
+| Nome | Valor |
+|---|---|
+| `STAGING_DATABASE_ADMIN_URL` | mesma URL que está em `nexa_database_admin_url` |
+
+(Os outros 2 secrets, `PORTAINER_WEBHOOK_API/WEB`, serão criados em **passo 6**.)
+
+### Merge do PR
+
+Push para `main` dispara o workflow `staging-deploy`. Esperado nesta primeira execução:
+
+| Job | Esperado |
+|---|---|
+| `validate` | ✅ passa |
+| `build-push` | ✅ primeiras imagens publicadas em `ghcr.io/abnermeirelles/crm-nexa-{api,web}:latest` e `:sha-<7>` |
+| `migrate` | ✅ aplica migrations existentes (já estão em `dev`, sem mudanças neste PR) |
+| `deploy` | ❌ **vai falhar** porque os webhooks do Portainer ainda não existem |
+
+A falha de `deploy` é esperada — `validate`, `build-push` e `migrate` são o que precisamos antes do passo seguinte.
+
+### Pós-merge (uma vez)
+
+#### 4. Criar a stack no Portainer
 
 Stacks → Add stack → **Repository**:
 - Repository URL: `https://github.com/abnermeirelles/crm-nexa`
 - Reference: `refs/heads/main`
 - Compose path: `deploy/stack-staging.yml`
-- Environment variables: nenhuma (todas vêm de secrets ou estão hardcoded)
+- Environment variables: nenhuma
 - Stack name: `crm-nexa`
+- Deploy
 
-Após criar, em cada serviço (`api` e `web`):
-- Service Webhooks → Create webhook → copiar URL
-- Salvar como secrets do GitHub Actions: `PORTAINER_WEBHOOK_API` e `PORTAINER_WEBHOOK_WEB`
+Portainer puxa o YAML do `main`, baixa as imagens `:latest` que já existem em ghcr.io (passo 4 do workflow as publicou), monta os secrets e sobe os serviços. Em ~30s, ambos devem ficar healthy.
 
-### 3. Configurar DNS
+**Smoke test manual:**
 
-Apontar A records (já criados):
-- `crm-dev.nexasource.com.br` → IP do Swarm
-- `api.crm-dev.nexasource.com.br` → mesmo IP
+```bash
+curl -fsSL https://api.crm-dev.nexasource.com.br/health   # deve dar 200 + {"status":"ok","db":"ok"}
+curl -fsSI https://crm-dev.nexasource.com.br/login        # deve dar 200
+```
 
-Traefik gera os certificados Let's Encrypt automaticamente na primeira request HTTPS.
+#### 5. Gerar webhooks dos serviços
+
+No Portainer, em cada serviço (`crm-nexa_api` e `crm-nexa_web`):
+- Service Webhooks → **Create webhook** → copiar URL (formato `https://<portainer>/api/stacks/webhooks/<uuid>`)
+
+#### 6. Adicionar 2 secrets no GitHub Actions
+
+| Nome | Valor |
+|---|---|
+| `PORTAINER_WEBHOOK_API` | URL do webhook do serviço `api` |
+| `PORTAINER_WEBHOOK_WEB` | URL do webhook do serviço `web` |
+
+#### 7. Re-disparar o workflow para validar pipeline completo
+
+GitHub → Actions → staging-deploy → Run workflow (manual via `workflow_dispatch`).
+
+Agora os 4 jobs passam e o deploy vira 100% automatizado a partir do próximo push em `main`.
 
 ## Como deployar (depois do primeiro setup)
 

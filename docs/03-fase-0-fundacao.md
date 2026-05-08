@@ -287,7 +287,13 @@ Checklist final, todos obrigatórios:
 - `/dashboard` autenticado renderiza `/me` com user + tenant + plano; logout via Server Action
 - Middleware refresca tokens proativamente quando access está expirando (<30s) — RSC sempre vê access fresco
 - Detalhes e histórico em [`docs/05-fase-0-5-web-login.md`](05-fase-0-5-web-login.md) §10
-### 0.6 — CI/CD + Primeiro deploy ⏳ pendente
+### 0.6 — CI/CD + Primeiro deploy ⏳ em validação (2026-05-08)
+
+- Dockerfiles multi-stage para `apps/api` (Debian + Prisma engine) e `apps/web` (Next standalone)
+- `deploy/stack-staging.yml` Compose v3 para Swarm com Traefik + secrets externos
+- GitHub Actions: `pr-validate` + `staging-deploy` (validate → build-push → migrate → webhook)
+- Convenção `*_FILE` na API consome Docker Swarm secrets de `/run/secrets/`
+- Aguardando primeiro deploy real (passos manuais no Portainer/GitHub) — vide [`docs/06`](06-fase-0-6-cicd-deploy.md) §10
 
 ---
 
