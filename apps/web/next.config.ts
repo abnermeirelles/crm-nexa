@@ -1,8 +1,5 @@
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import type { NextConfig } from 'next';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   // Standalone output: gera .next/standalone/server.js + node_modules
@@ -10,7 +7,8 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // outputFileTracingRoot e necessario em monorepos para o tracer
   // do Next encontrar dependencias acima do diretorio de apps/web.
-  outputFileTracingRoot: join(__dirname, '../..'),
+  // process.cwd() em build/dev = apps/web/, entao .. .. = raiz do repo.
+  outputFileTracingRoot: join(process.cwd(), '..', '..'),
 };
 
 export default nextConfig;
