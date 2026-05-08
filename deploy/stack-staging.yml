@@ -1,0 +1,123 @@
+# =============================================================================
+# CRM Nexa — Stack Docker Swarm para STAGING
+# =============================================================================
+# Gerenciado pelo Portainer (Stacks > Repository mode aponta para
+# deploy/stack-staging.yml deste repo). Cada servico tem webhook que o
+# CI dispara para re-puxar a imagem :latest e atualizar o servico.
+#
+# Antes do primeiro deploy ler:  deploy/README.md
+# =============================================================================
+
+services:
+  api:
+    image: ghcr.io/abnermeirelles/crm-nexa-api:latest
+    networks:
+      - public_proxy
+      - infra_internal
+    environment:
+      NODE_ENV: production
+      API_PORT: 3001
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      # Dispatch para arquivos de secret montados em /run/secrets/.
+      # Helper readSecret() na API tenta o path antes do process.env.
+      DATABASE_URL_FILE: /run/secrets/nexa_database_url
+      DATABASE_ADMIN_URL_FILE: /run/secrets/nexa_database_admin_url
+      JWT_ACCESS_SECRET_FILE: /run/secrets/nexa_jwt_access_secret
+      JWT_REFRESH_SECRET_FILE: /run/secrets/nexa_jwt_refresh_secret
+    secrets:
+      - nexa_database_url
+      - nexa_database_admin_url
+      - nexa_jwt_access_secret
+      - nexa_jwt_refresh_secret
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -qO- http://localhost:3001/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+        parallelism: 1
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+        delay: 30s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=public_proxy
+        - traefik.http.services.crm-nexa-api.loadbalancer.server.port=3001
+        - traefik.http.routers.crm-nexa-api.rule=Host(`api.crm-dev.nexasource.com.br`)
+        - traefik.http.routers.crm-nexa-api.entrypoints=websecure
+        - traefik.http.routers.crm-nexa-api.tls=true
+        - traefik.http.routers.crm-nexa-api.tls.certresolver=le
+
+  web:
+    image: ghcr.io/abnermeirelles/crm-nexa-web:latest
+    networks:
+      - public_proxy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      # Comunicacao web -> api via DNS overlay do public_proxy.
+      # Mais rapido que passar pelo Traefik.
+      API_BASE_URL: http://api:3001
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+        parallelism: 1
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+        delay: 30s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=public_proxy
+        - traefik.http.services.crm-nexa-web.loadbalancer.server.port=3000
+        - traefik.http.routers.crm-nexa-web.rule=Host(`crm-dev.nexasource.com.br`)
+        - traefik.http.routers.crm-nexa-web.entrypoints=websecure
+        - traefik.http.routers.crm-nexa-web.tls=true
+        - traefik.http.routers.crm-nexa-web.tls.certresolver=le
+
+networks:
+  public_proxy:
+    external: true
+  infra_internal:
+    external: true
+
+secrets:
+  nexa_database_url:
+    external: true
+  nexa_database_admin_url:
+    external: true
+  nexa_jwt_access_secret:
+    external: true
+  nexa_jwt_refresh_secret:
+    external: true

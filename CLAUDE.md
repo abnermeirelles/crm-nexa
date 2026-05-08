@@ -55,7 +55,7 @@ A documentação **vive neste repo**, em `docs/`. Toda mudança de doc passa por
 | 0.3 — Banco + Prisma + Multi-tenant RLS | ✅ Concluída (PR #1) |
 | 0.4 — API NestJS + Auth + Tenancy | ✅ Concluída |
 | 0.5 — Web Next.js + Login | ✅ Concluída |
-| 0.6 — CI/CD + primeiro deploy | ⏳ **Próxima** |
+| 0.6 — CI/CD + primeiro deploy | ⏳ Em validação (PR `feat/cicd-deploy`) |
 
 ## Endpoints e paths importantes
 

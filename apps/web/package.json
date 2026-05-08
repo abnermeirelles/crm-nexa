@@ -4,7 +4,7 @@
   "private": true,
   "description": "CRM Nexa — Web (Next.js)",
   "scripts": {
-    "dev": "pnpm -F @crm-nexa/shared build && next dev -p ${WEB_PORT:-3000}",
+    "dev": "next dev -p ${WEB_PORT:-3000}",
     "build": "next build",
     "start": "next start -p ${WEB_PORT:-3000}",
     "lint": "eslint",
@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
-    "@crm-nexa/shared": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.14.0",

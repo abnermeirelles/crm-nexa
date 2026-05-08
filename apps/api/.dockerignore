@@ -1,0 +1,21 @@
+# Output, logs, IDE
+node_modules
+dist
+.next
+.turbo
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Git / CI
+.git
+.github
+
+# Testes / docs locais
+coverage
+README.md
+
+# Env files (secrets injetados via Swarm)
+.env
+.env.local
+.env.*.local

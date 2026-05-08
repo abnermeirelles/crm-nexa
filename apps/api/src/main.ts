@@ -1,4 +1,7 @@
 import 'reflect-metadata';
+// Side-effect import: le /run/secrets/* via *_FILE e popula process.env
+// ANTES dos modulos que leem env (Logger, Prisma, ConfigService).
+import './bootstrap/load-secrets';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
