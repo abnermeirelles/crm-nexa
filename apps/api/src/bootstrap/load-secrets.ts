@@ -31,7 +31,13 @@ function loadSecretsFromFiles(): void {
     }
 
     try {
-      let content = readFileSync(filePath, 'utf8').replace(/\s+$/, '');
+      let content = readFileSync(filePath, 'utf8');
+      // Strip BOM (UTF-8 byte order mark) que alguns editores adicionam
+      if (content.charCodeAt(0) === 0xfeff) {
+        content = content.slice(1);
+      }
+      // Strip whitespace leading + trailing
+      content = content.replace(/^\s+|\s+$/g, '');
       // Tolera valor salvo com aspas surround (copy-paste de .env onde
       // os valores costumam estar quoted). Docker Swarm secrets sao
       // imutaveis, entao stripar no consumidor e mais barato que
@@ -43,6 +49,13 @@ function loadSecretsFromFiles(): void {
       ) {
         content = content.slice(1, -1);
       }
+      // Diagnostico: loga os primeiros chars (sem expor o segredo
+      // inteiro). Util pra debugar quando o consumidor reclama do
+      // formato (ex.: Prisma exigindo prefixo postgresql://).
+      // eslint-disable-next-line no-console
+      console.log(
+        `[load-secrets] ${baseKey} loaded (len=${content.length}, head=${JSON.stringify(content.slice(0, 14))})`,
+      );
       process.env[baseKey] = content;
     } catch (err) {
       throw new Error(
