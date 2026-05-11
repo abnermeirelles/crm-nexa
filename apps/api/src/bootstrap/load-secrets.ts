@@ -38,6 +38,12 @@ function loadSecretsFromFiles(): void {
       }
       // Strip whitespace leading + trailing
       content = content.replace(/^\s+|\s+$/g, '');
+      // Tolera valor que comeca com "KEY=" — caso usuario tenha pasted
+      // uma linha inteira do .env ao inves de so o valor.
+      const envPrefix = `${baseKey}=`;
+      if (content.startsWith(envPrefix)) {
+        content = content.slice(envPrefix.length);
+      }
       // Tolera valor salvo com aspas surround (copy-paste de .env onde
       // os valores costumam estar quoted). Docker Swarm secrets sao
       // imutaveis, entao stripar no consumidor e mais barato que
