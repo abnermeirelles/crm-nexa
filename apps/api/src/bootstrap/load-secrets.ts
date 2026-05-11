@@ -31,7 +31,18 @@ function loadSecretsFromFiles(): void {
     }
 
     try {
-      const content = readFileSync(filePath, 'utf8').replace(/\s+$/, '');
+      let content = readFileSync(filePath, 'utf8').replace(/\s+$/, '');
+      // Tolera valor salvo com aspas surround (copy-paste de .env onde
+      // os valores costumam estar quoted). Docker Swarm secrets sao
+      // imutaveis, entao stripar no consumidor e mais barato que
+      // recriar o secret.
+      if (
+        content.length >= 2 &&
+        ((content.startsWith('"') && content.endsWith('"')) ||
+          (content.startsWith("'") && content.endsWith("'")))
+      ) {
+        content = content.slice(1, -1);
+      }
       process.env[baseKey] = content;
     } catch (err) {
       throw new Error(
