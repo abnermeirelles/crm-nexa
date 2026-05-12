@@ -37,10 +37,11 @@ model Tenant {
   updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  users     User[]
-  sessions  UserSession[]
-  auditLogs AuditLog[]
-  contacts  Contact[]
+  users          User[]
+  sessions       UserSession[]
+  auditLogs      AuditLog[]
+  contacts       Contact[]
+  contactImports ContactImport[]
 
   @@index([status])
   @@map("tenants")
@@ -160,4 +161,41 @@ model Contact {
   @@index([tenantId, stage])
   @@index([tenantId, ownerId])
   @@map("contacts")
+}
+
+// =====================================================================
+// ContactImportStatus — ciclo de vida do job de import CSV
+// =====================================================================
+enum ContactImportStatus {
+  queued
+  processing
+  done
+  failed
+
+  @@map("contact_import_status")
+}
+
+// =====================================================================
+// ContactImport — job de upload CSV de contatos
+// =====================================================================
+model ContactImport {
+  id             String              @id @default(uuid(7)) @db.Uuid
+  tenantId       String              @map("tenant_id") @db.Uuid
+  createdBy      String              @map("created_by") @db.Uuid
+  filename       String              @db.VarChar(255)
+  status         ContactImportStatus @default(queued)
+  totalRows      Int                 @default(0) @map("total_rows")
+  processedRows  Int                 @default(0) @map("processed_rows")
+  insertedRows   Int                 @default(0) @map("inserted_rows")
+  updatedRows    Int                 @default(0) @map("updated_rows")
+  errorRows      Int                 @default(0) @map("error_rows")
+  errors         Json                @default("[]")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt      DateTime?           @map("started_at") @db.Timestamptz(6)
+  finishedAt     DateTime?           @map("finished_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@map("contact_imports")
 }

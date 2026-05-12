@@ -195,3 +195,63 @@ export function apiUpdateContact(
 export function apiDeleteContact(id: string): Promise<void> {
   return apiServerFetch<void>(`/contacts/${id}`, { method: 'DELETE' });
 }
+
+// =====================================================================
+// Contact imports (CSV)
+// =====================================================================
+export type ContactImportStatus =
+  | 'queued'
+  | 'processing'
+  | 'done'
+  | 'failed';
+
+export interface ContactImportRowError {
+  row: number;
+  message: string;
+}
+
+export interface ContactImport {
+  id: string;
+  filename: string;
+  status: ContactImportStatus;
+  totalRows: number;
+  processedRows: number;
+  insertedRows: number;
+  updatedRows: number;
+  errorRows: number;
+  errors: ContactImportRowError[];
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export async function apiStartContactImport(
+  file: File,
+): Promise<{ importId: string }> {
+  const fd = new FormData();
+  fd.append('file', file, file.name);
+  // FormData precisa de Content-Type com boundary — deixar fetch
+  // calcular sozinho.
+  const access = await getAccessToken();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (access) headers.Authorization = `Bearer ${access}`;
+
+  const resp = await fetch(`${env.API_URL}/contacts/imports`, {
+    method: 'POST',
+    headers,
+    body: fd,
+    cache: 'no-store',
+  });
+  if (resp.status === 401) {
+    redirect('/login');
+  }
+  if (!resp.ok) {
+    const body = (await resp.json().catch(() => null)) as ApiErrorBody | null;
+    throw new ApiError(resp.status, body);
+  }
+  return (await resp.json()) as { importId: string };
+}
+
+export function apiGetContactImport(id: string): Promise<ContactImport> {
+  return apiServerFetch<ContactImport>(`/contacts/imports/${id}`);
+}

@@ -85,9 +85,17 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
               : `${meta.total} ${meta.total === 1 ? 'contato' : 'contatos'}`}
           </p>
         </div>
-        <Link href="/contacts/new" className={buttonVariants({ size: 'sm' })}>
-          Novo contato
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/contacts/import"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            Importar CSV
+          </Link>
+          <Link href="/contacts/new" className={buttonVariants({ size: 'sm' })}>
+            Novo contato
+          </Link>
+        </div>
       </header>
 
       <section className="border-b px-6 py-4">
