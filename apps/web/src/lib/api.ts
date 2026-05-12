@@ -82,6 +82,10 @@ export async function apiServerFetch<T>(
     const body = (await resp.json().catch(() => null)) as ApiErrorBody | null;
     throw new ApiError(resp.status, body);
   }
+  // 204 No Content (ex.: DELETE) ou body vazio — retorna undefined.
+  if (resp.status === 204 || resp.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
   return (await resp.json()) as T;
 }
 
@@ -148,4 +152,46 @@ export function apiListContacts(
   return apiServerFetch<ListContactsResponse>(
     `/contacts${buildContactsQuery(query)}`,
   );
+}
+
+export interface ContactCreatePayload {
+  name: string;
+  email?: string;
+  phone?: string;
+  document?: string;
+  companyName?: string;
+  stage?: ContactStage;
+  source?: string;
+  ownerId?: string;
+  tags?: string[];
+}
+export type ContactUpdatePayload = Partial<ContactCreatePayload>;
+
+export function apiGetContact(id: string): Promise<Contact> {
+  return apiServerFetch<Contact>(`/contacts/${id}`);
+}
+
+export function apiCreateContact(
+  payload: ContactCreatePayload,
+): Promise<Contact> {
+  return apiServerFetch<Contact>('/contacts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiUpdateContact(
+  id: string,
+  payload: ContactUpdatePayload,
+): Promise<Contact> {
+  return apiServerFetch<Contact>(`/contacts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiDeleteContact(id: string): Promise<void> {
+  return apiServerFetch<void>(`/contacts/${id}`, { method: 'DELETE' });
 }
