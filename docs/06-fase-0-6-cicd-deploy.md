@@ -1,9 +1,9 @@
 # 06 — Fase 0.6: CI/CD + Primeiro Deploy
 
-> **Duração estimada:** 2 a 3 dias (solo dev) — **executada em 2026-05-07/08**
+> **Duração estimada:** 2 a 3 dias (solo dev) — **executada em 2026-05-07/12**
 > **Pré-requisitos:** Fases 0.4 e 0.5 concluídas (API e Web rodando localmente).
-> **Última atualização:** 2026-05-08
-> **Status:** ⏳ Em validação — aguardando primeiro deploy real (vide §10)
+> **Última atualização:** 2026-05-12
+> **Status:** ✅ Concluída — pipeline 100% automático rodando em staging
 
 ---
 
@@ -276,14 +276,14 @@ compose.local.yml               ← validar imagens localmente
 - [x] `apps/api/Dockerfile` e `apps/web/Dockerfile` buildam localmente sem warning
 - [x] `compose.local.yml` sobe ambos os containers e responde nos endpoints
 - [x] `deploy/stack-staging.yml` validado com `docker stack config -c`
-- [ ] Secrets criados no Swarm (manual, 4 secrets via Portainer UI)
-- [x] DNS apontando para o Swarm host (já existia)
-- [ ] Stack criada no Portainer via Repository mode + webhooks gerados
-- [ ] Workflow do GitHub Actions verde no push para `main` (validate/build-push/migrate/deploy)
-- [ ] `https://api.crm-dev.nexasource.com.br/health` → 200 com cert válido
-- [ ] `https://crm-dev.nexasource.com.br/login` carrega
-- [ ] Login real no browser funciona com cookies `Secure`
-- [ ] PR aberto, mergeado, branch limpa
+- [x] Secrets criados no Swarm (4 secrets via Portainer UI)
+- [x] DNS apontando para o Swarm host (CF proxy desativado em `api.crm-dev.*` para LE funcionar)
+- [x] Stack criada no Portainer via Repository mode + webhooks gerados
+- [x] Workflow do GitHub Actions verde no push para `main` (validate/build-push/migrate/deploy)
+- [x] `https://api.crm-dev.nexasource.com.br/health` → 200 com cert válido
+- [x] `https://crm-dev.nexasource.com.br/login` carrega
+- [x] Login real no browser funciona com cookies `Secure`
+- [x] PR aberto, mergeado, branch limpa
 - [x] `docs/03` em sincronia com este doc; este doc atualizado com §10
 - [x] CLAUDE.md atualizado com URLs de staging
 
@@ -354,11 +354,26 @@ Para evitar escopo inflado:
 - `apps/api/src/main.ts` reorganizado: `import './bootstrap/load-secrets'` posicionado entre `reflect-metadata` e `@nestjs/core` para garantir ordem de execução em CJS.
 - Validação: container com `-v .secrets-local:/run/secrets:ro` + env `*_FILE` apontando para os arquivos → API saudável, login E2E ok sem expor vars no env.
 
-### 0.6.E — PR + bootstrap manual + smoke E2E (commit pendente)
+### 0.6.E — PR + bootstrap manual + smoke E2E (PR #4, mergeado em `1354fe0`)
 
-- Atualizado `deploy/README.md` com a sequência exata (resolve a galinha-e-ovo entre stack Portainer / imagens ghcr.io / secrets GH Actions / webhooks).
-- PR aberto: validate-only roda primeiro.
-- Pós-merge: bootstrap manual em 7 passos (4 secrets Swarm → 1 secret GH → merge → criar stack → smoke → 2 webhooks → 2 secrets GH → re-disparar workflow).
+- `deploy/README.md` com sequência exata (resolve a galinha-e-ovo entre stack Portainer / imagens ghcr.io / secrets GH Actions / webhooks).
+- PR aberto, mergeado, branch limpa.
+
+**Bugs e descobertas durante o bootstrap real (deploy em produção):**
+
+1. **`apps/api` sem ESLint instalado** — `pnpm turbo run lint` quebrava em CI. Removido o script `lint` da api (NestJS scaffold tradicional traz, mas a nossa 0.4.A pulou). Web continua com lint.
+2. **`next.config.ts` com `import.meta.url`** quebrava `next build` em CI (`exports is not defined in ES module scope`). Trocado para `process.cwd()`, runtime-agnostic.
+3. **Workflow falhava em migrate** porque a secret `STAGING_DATABASE_ADMIN_URL` no GH foi salva com aspas surround (copy-paste de `.env`). Adicionado strip de aspas no workflow.
+4. **GHCR packages privados por default** — Swarm não puxava imagens. Solução: mudar visibility de cada package para Public via `github.com/users/<user>/packages/container/<name>/settings`.
+5. **Stack rejected no Portainer** — Swarm cluster com nodes worker que não têm secrets. Adicionado `placement.constraints: [node.role == manager]`.
+6. **Docker Swarm secret format** — usuário pasted linha inteira do `.env` (`DATABASE_URL="postgresql://..."`) ao criar o secret. `load-secrets` foi estendido pra tolerar:
+   - BOM (`﻿`) no início
+   - Whitespace leading/trailing
+   - Prefixo `KEY=` (linha completa de `.env`)
+   - Aspas surround (`"..."` ou `'...'`)
+   - Log diagnóstico mostrando primeiros 14 chars (sem expor segredo).
+7. **API container não alcançava Postgres em `cloud.nexasource.com.br:52430`** — hairpin NAT bloqueado pelo firewall. Solução correta: usar DNS overlay do Swarm (`postgres:5432` na rede `infra_internal`) em vez do hostname público. Secrets refatorados para apontar para o serviço interno.
+8. **Cloudflare Universal SSL grátis cobre só 1 nível de subdomínio** — `crm-dev.nexasource.com.br` ok, mas `api.crm-dev.*` falhava no TLS handshake. Solução: desativar proxy CF (DNS-only) em `api.crm-dev.*` — Traefik pega cert do LE diretamente.
 
 ### Pendências técnicas registradas durante a 0.6
 
@@ -367,3 +382,6 @@ Para evitar escopo inflado:
 - **Backup pré-migrate** — antes do beta, fazer dump do banco antes de cada `prisma migrate deploy`.
 - **Recriar imagem periodicamente** para pegar patches do Debian (gnutls28 e outros) — agendar workflow semanal de rebuild.
 - **CVE acompanhamento** — gnutls28 4 CVEs HIGH sem patch upstream. Sem risco prático (Node não usa gnutls), mas revisar quando Debian liberar fix.
+- **API pública via CF proxy** — hoje `api.crm-dev.*` está como DNS-only (origin IP exposta). Para produção: configurar firewall com allowlist de IPs da Cloudflare antes de re-ativar proxy, OU usar CF Advanced Certificate Manager.
+- **Stack file referencia secrets `nexa_*` que apontam para `postgres:5432`** — assume que existe um serviço `postgres` na rede `infra_internal`. Documentar em `deploy/README.md` que essa é a expectativa.
+- **Cleanup de tag `:sha-<7>` antigas** no ghcr.io eventualmente — sem retention policy, vão acumulando. Configurar após primeiros 20-30 deploys.
