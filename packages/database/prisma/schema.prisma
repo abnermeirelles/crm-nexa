@@ -40,6 +40,7 @@ model Tenant {
   users     User[]
   sessions  UserSession[]
   auditLogs AuditLog[]
+  contacts  Contact[]
 
   @@index([status])
   @@map("tenants")
@@ -61,9 +62,10 @@ model User {
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  sessions  UserSession[]
-  auditLogs AuditLog[]
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sessions       UserSession[]
+  auditLogs      AuditLog[]
+  ownedContacts  Contact[]     @relation("ContactOwner")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -115,4 +117,47 @@ model AuditLog {
   @@index([tenantId, action, createdAt])
   @@index([tenantId, entityType, entityId])
   @@map("audit_log")
+}
+
+// =====================================================================
+// ContactStage — ciclo de vida do contato no funil
+// =====================================================================
+enum ContactStage {
+  lead
+  prospect
+  customer
+  churned
+
+  @@map("contact_stage")
+}
+
+// =====================================================================
+// Contact — pessoa ou empresa rastreada no CRM
+// =====================================================================
+model Contact {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  tenantId    String       @map("tenant_id") @db.Uuid
+  name        String       @db.VarChar(255)
+  email       String?      @db.Citext
+  phone       String?      @db.VarChar(32)
+  // Apenas digitos (validacao de CPF/CNPJ via DTO; formato visual e responsabilidade da UI).
+  document    String?      @db.VarChar(20)
+  companyName String?      @map("company_name") @db.VarChar(255)
+  stage       ContactStage @default(lead)
+  source      String?      @db.VarChar(64)
+  ownerId     String?      @map("owner_id") @db.Uuid
+  tags        String[]     @default([])
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  owner  User?  @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // Indexes adicionais (unique parcial em (tenantId, email) WHERE deletedAt IS NULL
+  // e trigram em name) sao criados via SQL raw na migration — Prisma nao
+  // expressa esses casos.
+  @@index([tenantId, stage])
+  @@index([tenantId, ownerId])
+  @@map("contacts")
 }
