@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { ACCESS_COOKIE, REFRESH_COOKIE } from '@/lib/cookie-names';
 import { isAccessExpiringSoon } from '@/lib/jwt-exp';
 
-const PROTECTED_RE = /^\/(dashboard)(\/|$)/;
+const PROTECTED_RE = /^\/(dashboard|contacts)(\/|$)/;
 
 const ACCESS_MAX_AGE_S = 60 * 30;
 const REFRESH_MAX_AGE_S = 60 * 60 * 24 * 7;

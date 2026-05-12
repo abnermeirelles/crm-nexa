@@ -88,3 +88,64 @@ export async function apiServerFetch<T>(
 export function apiMe(): Promise<MeResponse> {
   return apiServerFetch<MeResponse>('/me');
 }
+
+// =====================================================================
+// Contacts
+// =====================================================================
+export type ContactStage = 'lead' | 'prospect' | 'customer' | 'churned';
+
+export interface Contact {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  document: string | null;
+  companyName: string | null;
+  stage: ContactStage;
+  source: string | null;
+  ownerId: string | null;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListMeta {
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export interface ListContactsResponse {
+  data: Contact[];
+  meta: ListMeta;
+}
+
+export interface ListContactsQuery {
+  q?: string;
+  stage?: ContactStage;
+  ownerId?: string;
+  tag?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+function buildContactsQuery(q: ListContactsQuery): string {
+  const params = new URLSearchParams();
+  if (q.q) params.set('q', q.q);
+  if (q.stage) params.set('stage', q.stage);
+  if (q.ownerId) params.set('ownerId', q.ownerId);
+  if (q.tag) params.set('tag', q.tag);
+  if (q.page && q.page > 1) params.set('page', String(q.page));
+  if (q.pageSize && q.pageSize !== 25) params.set('pageSize', String(q.pageSize));
+  const s = params.toString();
+  return s ? `?${s}` : '';
+}
+
+export function apiListContacts(
+  query: ListContactsQuery = {},
+): Promise<ListContactsResponse> {
+  return apiServerFetch<ListContactsResponse>(
+    `/contacts${buildContactsQuery(query)}`,
+  );
+}
