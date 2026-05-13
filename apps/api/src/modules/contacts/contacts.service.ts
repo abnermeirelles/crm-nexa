@@ -8,6 +8,7 @@ import { Prisma } from '@crm-nexa/database';
 import { ClsService } from 'nestjs-cls';
 import { TENANT_ID_KEY } from '../../common/cls/keys';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { ListContactsQueryDto } from './dto/list-contacts.query';
 import { UpdateContactDto } from './dto/update-contact.dto';
@@ -34,12 +35,14 @@ export class ContactsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cls: ClsService,
+    private readonly audit: AuditService,
   ) {}
 
   async create(dto: CreateContactDto) {
     await this.assertOwnerInTenant(dto.ownerId);
+    let created;
     try {
-      return await this.prisma.client.contact.create({
+      created = await this.prisma.client.contact.create({
         data: {
           name: dto.name,
           email: dto.email ?? null,
@@ -60,6 +63,14 @@ export class ContactsService {
     } catch (err) {
       throw this.translatePrismaError(err);
     }
+    await this.audit.write({
+      action: 'contact.create',
+      entityType: 'contact',
+      entityId: created.id,
+      before: null,
+      after: created as unknown as Prisma.InputJsonValue,
+    });
+    return created;
   }
 
   async list(query: ListContactsQueryDto) {
@@ -114,14 +125,15 @@ export class ContactsService {
 
   async update(id: string, dto: UpdateContactDto) {
     // findOne ja valida tenant (RLS) e nao-deletado
-    await this.findOne(id);
+    const before = await this.findOne(id);
 
     if (dto.ownerId !== undefined && dto.ownerId !== null) {
       await this.assertOwnerInTenant(dto.ownerId);
     }
 
+    let updated;
     try {
-      return await this.prisma.client.contact.update({
+      updated = await this.prisma.client.contact.update({
         where: { id },
         data: {
           ...(dto.name !== undefined && { name: dto.name }),
@@ -141,13 +153,28 @@ export class ContactsService {
     } catch (err) {
       throw this.translatePrismaError(err);
     }
+    await this.audit.write({
+      action: 'contact.update',
+      entityType: 'contact',
+      entityId: id,
+      before: before as unknown as Prisma.InputJsonValue,
+      after: updated as unknown as Prisma.InputJsonValue,
+    });
+    return updated;
   }
 
   async softDelete(id: string) {
-    await this.findOne(id); // valida tenant
+    const before = await this.findOne(id); // valida tenant
     await this.prisma.client.contact.update({
       where: { id },
       data: { deletedAt: new Date() },
+    });
+    await this.audit.write({
+      action: 'contact.delete',
+      entityType: 'contact',
+      entityId: id,
+      before: before as unknown as Prisma.InputJsonValue,
+      after: null,
     });
   }
 

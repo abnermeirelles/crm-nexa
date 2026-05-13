@@ -5,6 +5,7 @@ import { parse } from 'csv-parse';
 import { createReadStream, promises as fs } from 'node:fs';
 import { Prisma } from '@crm-nexa/database';
 import { PrismaAdminService } from '../../../common/prisma/prisma-admin.service';
+import { AuditService } from '../../audit/audit.service';
 import {
   CONTACT_IMPORT_QUEUE,
   type ContactImportJobData,
@@ -51,15 +52,23 @@ interface ParsedRow {
 export class ContactImportsProcessor extends WorkerHost {
   private readonly log = new Logger(ContactImportsProcessor.name);
 
-  constructor(private readonly admin: PrismaAdminService) {
+  constructor(
+    private readonly admin: PrismaAdminService,
+    private readonly audit: AuditService,
+  ) {
     super();
   }
 
   async process(job: Job<ContactImportJobData>): Promise<void> {
-    const { importId, tenantId, filePath } = job.data;
+    const { importId, tenantId, filePath, filename } = job.data;
     this.log.log(
       `Starting import ${importId} (tenant=${tenantId}, file=${filePath})`,
     );
+
+    const importRow = await this.admin.contactImport.findUnique({
+      where: { id: importId },
+      select: { createdBy: true },
+    });
 
     try {
       await this.admin.contactImport.update({
@@ -86,6 +95,22 @@ export class ContactImportsProcessor extends WorkerHost {
       this.log.log(
         `Import ${importId} done: +${result.inserted} new, ~${result.updated} updated, ${result.errors.length} errors`,
       );
+
+      await this.audit.write({
+        tenantId,
+        actorId: importRow?.createdBy ?? null,
+        actorType: importRow?.createdBy ? 'user' : 'system',
+        action: 'contact.import',
+        entityType: 'contact_import',
+        entityId: importId,
+        after: {
+          filename,
+          totalRows: result.total,
+          insertedRows: result.inserted,
+          updatedRows: result.updated,
+          errorRows: result.errors.length,
+        },
+      });
     } catch (err) {
       this.log.error(`Import ${importId} failed`, err as Error);
       await this.admin.contactImport.update({
@@ -97,6 +122,15 @@ export class ContactImportsProcessor extends WorkerHost {
             { row: 0, message: (err as Error).message ?? 'unknown error' },
           ] as unknown as Prisma.InputJsonValue,
         },
+      });
+      await this.audit.write({
+        tenantId,
+        actorId: importRow?.createdBy ?? null,
+        actorType: importRow?.createdBy ? 'user' : 'system',
+        action: 'contact.import.failed',
+        entityType: 'contact_import',
+        entityId: importId,
+        after: { filename, error: (err as Error).message },
       });
     } finally {
       // Cleanup do arquivo tmp
