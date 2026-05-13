@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import {
   Card,
   CardContent,
@@ -5,7 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { apiMe } from '@/lib/api';
 import { logoutAction } from './actions';
 
@@ -29,11 +30,19 @@ export default async function DashboardPage() {
           </p>
           <p className="text-sm font-medium">{me.name}</p>
         </div>
-        <form action={logoutAction}>
-          <Button type="submit" variant="outline" size="sm">
-            Sair
-          </Button>
-        </form>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/contacts"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            Contatos
+          </Link>
+          <form action={logoutAction}>
+            <Button type="submit" variant="outline" size="sm">
+              Sair
+            </Button>
+          </form>
+        </div>
       </header>
 
       <main className="flex flex-1 items-start justify-center p-6">

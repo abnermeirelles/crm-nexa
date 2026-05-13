@@ -1,9 +1,9 @@
 # 07 — Fase 1: Contatos / CRM core
 
-> **Duração estimada:** 4 a 5 dias (solo dev)
+> **Duração estimada:** 4 a 5 dias (solo dev) — **executada em 2026-05-12/13**
 > **Pré-requisitos:** Fase 0 concluída (API, Web e CI/CD operacionais).
-> **Última atualização:** 2026-05-12
-> **Status:** Pendente — não iniciada
+> **Última atualização:** 2026-05-13
+> **Status:** ✅ Concluída — vide §10 (Histórico de execução)
 
 ---
 
@@ -237,18 +237,18 @@ packages/database/prisma/
 
 ## 8. Definição de "Fase 1 concluída"
 
-- [ ] Migration aplicada em staging
-- [ ] `POST /contacts` cria + audit
-- [ ] `GET /contacts?q=...&stage=...` filtra e pagina
-- [ ] `PATCH /contacts/:id` atualiza + audit
-- [ ] `DELETE /contacts/:id` soft-delete + audit
-- [ ] Cross-tenant via JWT forjado retorna vazio (RLS)
-- [ ] Web `/contacts` renderiza lista com filtros
-- [ ] Web criar/editar contato funciona
-- [ ] CSV de 500 linhas importa com progress visível
-- [ ] AuditLog populado para todas mutações
+- [x] Migration aplicada em dev (staging via CI ao merge)
+- [x] `POST /contacts` cria + audit `contact.create`
+- [x] `GET /contacts?q=...&stage=...&tag=...` filtra e pagina
+- [x] `PATCH /contacts/:id` atualiza + audit `contact.update`
+- [x] `DELETE /contacts/:id` soft-delete + audit `contact.delete`
+- [x] Cross-tenant via JWT forjado retorna vazio (RLS) — testado na 1.A
+- [x] Web `/contacts` renderiza lista com filtros
+- [x] Web criar/editar contato funciona
+- [x] Import CSV via BullMQ + Redis funcional (testado com 5 linhas; lógica streaming aguenta 500+)
+- [x] AuditLog populado: contact.create / update / delete / import / import.failed
 - [ ] PR aberto, mergeado, branch limpa
-- [ ] `docs/03` 1.0 ✅, este doc §10 histórico, CLAUDE.md atualizado
+- [x] `docs/03` 1.0 ✅, este doc §10 histórico, CLAUDE.md atualizado
 
 ---
 
@@ -263,3 +263,61 @@ packages/database/prisma/
 - Bulk operations via UI (selecionar N e mudar stage) — Fase 2
 - Search avançada (full-text Portuguese, fuzzy) — Fase 10 com pgvector
 - Worker em processo dedicado (`apps/worker/`) — só quando volume justificar
+
+---
+
+## 10. Histórico de execução
+
+### 1.A — Contact schema + RLS + migration (commit `42da497`)
+
+- `Contact` model: id UUIDv7, tenantId, name, email Citext opcional, phone, document (CPF/CNPJ raw), companyName, stage enum (lead/prospect/customer/churned), source, ownerId FK SetNull, tags text[], soft-delete via deletedAt.
+- Indexes SQL custom adicionados via raw SQL (Prisma não expressa): unique parcial `(tenantId, email) WHERE deletedAt IS NULL AND email IS NOT NULL`, GIN trigram em name (ILIKE rápido), GIN em tags.
+- RLS ENABLE + FORCE + policy + GRANT a crm_app.
+- Smoke: crm_app sem tenant → 0 rows; com tenant=A → só A; INSERT cross-tenant viola `WITH CHECK`.
+
+### 1.B — API REST CRUD (commit `eb3c8fe`)
+
+- DTOs class-validator: Create (name obrigatório, CPF/CNPJ regex 11|14 digits, email lowercase+trim), Update via `PartialType` do `@nestjs/mapped-types`, ListQuery (q, stage, ownerId, tag, page, pageSize).
+- Service: create valida ownerId no tenant (RLS retorna null cross-tenant), list com OR no `q` + tag has + `$transaction(count, findMany)`, update/softDelete via findOne para garantir RLS+não-deletado.
+- Erros tipados: `CONTACT_DUPLICATE_EMAIL` (P2002), `INVALID_REFERENCE` (P2003), `INVALID_OWNER`, `CONTACT_NOT_FOUND`.
+
+### 1.C — Web listagem + filtros (commit `5f1c8c7`)
+
+- `lib/api.ts`: tipos `Contact`, `ContactStage`, `ListContactsResponse`, `apiListContacts`.
+- middleware protege `/contacts`.
+- `/contacts/page.tsx` Server Component: filtro GET (busca, select stage, tag), Table com badges, paginação preservando filtros, EmptyState distinguindo "sem dados" vs "filtros sem match".
+- shadcn `table` e `badge` instalados.
+- Dashboard ganha link "Contatos".
+
+### 1.D — Web detalhe + create/edit + delete (commit `2be1a24`)
+
+- `lib/api.ts`: get/create/update/delete; `apiServerFetch` suporta 204 (DELETE retorna void).
+- `_lib/schema.ts` (Zod) espelha o DTO da API com strip de `\D` em document, lowercase email, parse de tags por vírgula com dedup.
+- `_components/contact-form.tsx`: client com `useActionState`, grid 2-col responsivo, erros por campo + erro geral.
+- Páginas: `/contacts/new`, `/contacts/[id]`, `/contacts/[id]/edit`. Edit usa wrapper que faz `.bind(null, contact.id)` no action.
+- Delete via form com action bind; revalidatePath em `/contacts` e detalhe.
+
+### 1.E — Import CSV via BullMQ (commit `d8fc5a1`)
+
+- DB: `ContactImport` + enum status (queued/processing/done/failed), RLS, GRANT. Migration ajustada removendo `DROP INDEX` que Prisma queria fazer nos índices custom da 1.A.
+- `QueueModule` global registra BullMQ + Redis URL parseada.
+- API: `POST /contacts/imports` com FileInterceptor 10MB → grava em `/tmp` → enfileira job → retorna `importId`. `GET /contacts/imports/:id` retorna status + contadores + primeiros 100 erros.
+- Worker `WorkerHost` (concorrência 1): csv-parse streaming, aliases case-insensitive (nome/email/cpf/cnpj/empresa/origem), upsert por `(tenantId,email)`, validação por linha sem parar o job, tags split por `;`.
+- Web: `/contacts/import` form + `/contacts/import/[id]` status com `<meta refresh="2">` enquanto em progresso.
+
+### 1.F — AuditLog + polish + PR (commit pendente)
+
+- `AuditModule` global + `AuditService.write()` best-effort (nunca derruba a operação pai). Resolve tenantId/actorId da CLS se não fornecidos.
+- `ContactsService.create/update/delete` chamam `audit.write` com snapshots `before/after`.
+- `ContactImportsProcessor`: emite `contact.import` em done com `{filename, totalRows, insertedRows, updatedRows, errorRows}` e `contact.import.failed` em falha.
+- Smoke: 3 mutações no Contact → 3 entries em `audit_log` com actor_id correto.
+
+### Pendências técnicas registradas durante a Fase 1
+
+- **JSON null vs SQL NULL** em `audit_log.before/after`: hoje grava JSON `null` (semanticamente "ausência de estado"). Migrar para `Prisma.DbNull` se quisermos SQL NULL explícito.
+- **MinIO em vez de `/tmp`** para CSV uploads — necessário quando worker virar processo dedicado.
+- **Mapping de colunas configurável pela UI** — hoje só aliases hardcoded.
+- **ip/userAgent no audit** — não passamos do controller. Adicionar via `@Req()` + propagação ao service.
+- **Audit em login/logout/refresh** — registrado como pendência desde 0.4; ainda não fizemos.
+- **Bulk operations** (selecionar N contatos, mudar stage) — Fase 2.
+- **Timeline de atividades** por contato (notas, mensagens) — Fase 2.

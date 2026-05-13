@@ -7,6 +7,9 @@ export interface AppConfig {
     url: string;
     adminUrl: string;
   };
+  redis: {
+    url: string;
+  };
   jwt: {
     accessSecret: string;
     refreshSecret: string;
@@ -34,6 +37,9 @@ export function loadConfiguration(): AppConfig {
     database: {
       url: required('DATABASE_URL'),
       adminUrl: required('DATABASE_ADMIN_URL'),
+    },
+    redis: {
+      url: required('REDIS_URL'),
     },
     jwt: {
       accessSecret: required('JWT_ACCESS_SECRET'),
