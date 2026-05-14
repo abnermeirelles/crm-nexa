@@ -42,6 +42,7 @@ model Tenant {
   auditLogs      AuditLog[]
   contacts       Contact[]
   contactImports ContactImport[]
+  activities     Activity[]
 
   @@index([status])
   @@map("tenants")
@@ -63,10 +64,11 @@ model User {
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  sessions       UserSession[]
-  auditLogs      AuditLog[]
-  ownedContacts  Contact[]     @relation("ContactOwner")
+  tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sessions         UserSession[]
+  auditLogs        AuditLog[]
+  ownedContacts    Contact[]     @relation("ContactOwner")
+  actedActivities  Activity[]    @relation("ActivityActor")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -152,8 +154,9 @@ model Contact {
   updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz(6)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  owner  User?  @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  owner      User?      @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  activities Activity[]
 
   // Indexes adicionais (unique parcial em (tenantId, email) WHERE deletedAt IS NULL
   // e trigram em name) sao criados via SQL raw na migration — Prisma nao
@@ -161,6 +164,46 @@ model Contact {
   @@index([tenantId, stage])
   @@index([tenantId, ownerId])
   @@map("contacts")
+}
+
+// =====================================================================
+// ActivityType — categorias da timeline do contato
+// =====================================================================
+enum ActivityType {
+  note
+  call
+  email
+  meeting
+  system
+
+  @@map("activity_type")
+}
+
+// =====================================================================
+// Activity — entrada na timeline de um contato (nota, call, system)
+// =====================================================================
+model Activity {
+  id        String       @id @default(uuid(7)) @db.Uuid
+  tenantId  String       @map("tenant_id") @db.Uuid
+  contactId String       @map("contact_id") @db.Uuid
+  type      ActivityType
+  title     String?      @db.VarChar(255)
+  body      String?
+  // metadata livre por tipo: { phoneNumber, durationSec } para call,
+  // { from, to } para stage change, etc.
+  metadata  Json         @default("{}")
+  actorId   String?      @map("actor_id") @db.Uuid
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  actor   User?   @relation("ActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, contactId, createdAt(sort: Desc)])
+  @@index([tenantId, type])
+  @@map("activities")
 }
 
 // =====================================================================
