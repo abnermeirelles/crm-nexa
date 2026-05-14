@@ -6,6 +6,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { LoggerModule } from './common/logger/logger.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { QueueModule } from './common/queue/queue.module';
+import { ActivitiesModule } from './modules/activities/activities.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
@@ -27,6 +28,7 @@ import { loadConfiguration } from './config/configuration';
     QueueModule,
     AuditModule,
     AuthModule,
+    ActivitiesModule,
     ContactsModule,
     ContactImportsModule,
     HealthModule,

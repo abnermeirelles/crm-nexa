@@ -8,6 +8,7 @@ import { Prisma } from '@crm-nexa/database';
 import { ClsService } from 'nestjs-cls';
 import { TENANT_ID_KEY } from '../../common/cls/keys';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ActivitiesService } from '../activities/activities.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { ListContactsQueryDto } from './dto/list-contacts.query';
@@ -36,6 +37,7 @@ export class ContactsService {
     private readonly prisma: PrismaService,
     private readonly cls: ClsService,
     private readonly audit: AuditService,
+    private readonly activities: ActivitiesService,
   ) {}
 
   async create(dto: CreateContactDto) {
@@ -160,6 +162,18 @@ export class ContactsService {
       before: before as unknown as Prisma.InputJsonValue,
       after: updated as unknown as Prisma.InputJsonValue,
     });
+
+    // Stage change gera entry visivel na timeline. Outras mudancas
+    // podem ser inferidas via audit_log, mas stage merece destaque
+    // porque e a metrica principal de funil.
+    if (dto.stage !== undefined && before.stage !== updated.stage) {
+      await this.activities.writeSystem({
+        contactId: id,
+        title: `Stage alterado: ${before.stage} → ${updated.stage}`,
+        metadata: { field: 'stage', from: before.stage, to: updated.stage },
+      });
+    }
+
     return updated;
   }
 
