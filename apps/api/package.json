@@ -26,6 +26,7 @@
     "class-validator": "^0.14.1",
     "csv-parse": "^6.2.1",
     "helmet": "^8.0.0",
+    "multer": "^2.1.1",
     "nestjs-cls": "^5.0.0",
     "nestjs-pino": "^4.1.0",
     "passport": "^0.7.0",
