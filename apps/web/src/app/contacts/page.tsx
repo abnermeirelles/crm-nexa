@@ -1,17 +1,9 @@
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { apiListContacts, type ContactStage } from '@/lib/api';
+import { ContactsTable } from './_components/contacts-table';
 
 export const metadata = {
   title: 'Contatos — CRM Nexa',
@@ -47,14 +39,6 @@ function parsePage(value: string | undefined): number {
   return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
 }
 
-function dateLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
-
 export default async function ContactsPage({ searchParams }: ContactsPageProps) {
   const params = await searchParams;
   const q = params.q?.trim() || undefined;
@@ -74,6 +58,15 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
     return `/contacts${s ? `?${s}` : ''}`;
   };
 
+  const exportHref = (() => {
+    const sp = new URLSearchParams();
+    if (q) sp.set('q', q);
+    if (stage) sp.set('stage', stage);
+    if (tag) sp.set('tag', tag);
+    const s = sp.toString();
+    return `/contacts/export${s ? `?${s}` : ''}`;
+  })();
+
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b px-6 py-4">
@@ -86,6 +79,13 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <a
+            href={exportHref}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            download
+          >
+            Exportar CSV
+          </a>
           <Link
             href="/contacts/import"
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
@@ -156,43 +156,7 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
         {data.length === 0 ? (
           <EmptyState hasFilters={Boolean(q || stage || tag)} />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>E-mail</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>Stage</TableHead>
-                <TableHead>Atualizado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">
-                    <Link
-                      href={`/contacts/${c.id}`}
-                      className="hover:underline"
-                    >
-                      {c.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {c.email ?? '—'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {c.phone ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{STAGE_LABEL[c.stage]}</Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {dateLabel(c.updatedAt)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <ContactsTable contacts={data} />
         )}
       </main>
 

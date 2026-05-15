@@ -57,6 +57,8 @@ A documentação **vive neste repo**, em `docs/`. Toda mudança de doc passa por
 | 0.5 — Web Next.js + Login | ✅ Concluída |
 | 0.6 — CI/CD + primeiro deploy | ✅ Concluída (staging em `crm-dev.nexasource.com.br`) |
 | 1.0 — Contatos / CRM core | ✅ Concluída (CRUD + import CSV via BullMQ + AuditLog) |
+| 2.0 — Timeline + Bulk + Export | ✅ Concluída |
+| 2.1 — Deals/Pipeline | ⏳ **Próxima** |
 
 ## Endpoints e paths importantes
 

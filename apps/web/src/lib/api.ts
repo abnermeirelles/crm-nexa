@@ -255,3 +255,76 @@ export async function apiStartContactImport(
 export function apiGetContactImport(id: string): Promise<ContactImport> {
   return apiServerFetch<ContactImport>(`/contacts/imports/${id}`);
 }
+
+// =====================================================================
+// Activities (timeline do contato)
+// =====================================================================
+export type ActivityType = 'note' | 'call' | 'email' | 'meeting' | 'system';
+
+export interface Activity {
+  id: string;
+  contactId: string;
+  type: ActivityType;
+  title: string | null;
+  body: string | null;
+  metadata: Record<string, unknown>;
+  actorId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListActivitiesResponse {
+  data: Activity[];
+  meta: ListMeta;
+}
+
+export interface CreateActivityPayload {
+  type: Exclude<ActivityType, 'system'>;
+  title?: string;
+  body?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export function apiListActivities(
+  contactId: string,
+  page = 1,
+): Promise<ListActivitiesResponse> {
+  const qs = page > 1 ? `?page=${page}` : '';
+  return apiServerFetch<ListActivitiesResponse>(
+    `/contacts/${contactId}/activities${qs}`,
+  );
+}
+
+export function apiCreateActivity(
+  contactId: string,
+  payload: CreateActivityPayload,
+): Promise<Activity> {
+  return apiServerFetch<Activity>(`/contacts/${contactId}/activities`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function apiDeleteActivity(id: string): Promise<void> {
+  return apiServerFetch<void>(`/activities/${id}`, { method: 'DELETE' });
+}
+
+// =====================================================================
+// Bulk operations
+// =====================================================================
+export interface BulkStageResult {
+  matched: number;
+  updated: number;
+}
+
+export function apiBulkUpdateStage(
+  ids: string[],
+  stage: ContactStage,
+): Promise<BulkStageResult> {
+  return apiServerFetch<BulkStageResult>('/contacts/bulk/stage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, stage }),
+  });
+}

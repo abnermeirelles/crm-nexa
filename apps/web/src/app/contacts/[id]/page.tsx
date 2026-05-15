@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/card';
 import { ApiError, apiGetContact, type ContactStage } from '@/lib/api';
 import { deleteContactAction } from './actions';
+import { Timeline } from './_components/timeline';
 
 export const metadata = {
   title: 'Contato — CRM Nexa',
@@ -95,6 +96,7 @@ export default async function ContactDetailPage({ params }: PageProps) {
               value={dateLabel(contact.updatedAt)}
             />
           </CardContent>
+          <Timeline contactId={contact.id} />
         </Card>
       </main>
     </div>
