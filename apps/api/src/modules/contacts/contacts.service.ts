@@ -192,6 +192,68 @@ export class ContactsService {
     });
   }
 
+  // Bulk update de stage. Limite de 500 ids enforced no DTO.
+  // RLS garante que so contacts do tenant atual sao tocados (RLS faz
+  // CHECK no UPDATE). Cria system activity para cada contact em que
+  // o stage realmente mudou.
+  async bulkUpdateStage(ids: string[], stage: 'lead' | 'prospect' | 'customer' | 'churned') {
+    if (ids.length === 0) {
+      return { matched: 0, updated: 0 };
+    }
+
+    // Le os estados anteriores para emitir system activity so quando
+    // realmente muda. Tambem confirma que pertencem ao tenant (RLS).
+    const before = await this.prisma.client.contact.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, stage: true },
+    });
+
+    const matched = before.length;
+    const idsToUpdate = before
+      .filter((c) => c.stage !== stage)
+      .map((c) => c.id);
+
+    if (idsToUpdate.length === 0) {
+      await this.audit.write({
+        action: 'contact.bulk.stage',
+        entityType: 'contact',
+        after: { ids, stage, matched, updated: 0 },
+      });
+      return { matched, updated: 0 };
+    }
+
+    const result = await this.prisma.client.contact.updateMany({
+      where: { id: { in: idsToUpdate } },
+      data: { stage },
+    });
+
+    // System activity por contact (best-effort, em paralelo).
+    await Promise.all(
+      before
+        .filter((c) => c.stage !== stage)
+        .map((c) =>
+          this.activities.writeSystem({
+            contactId: c.id,
+            title: `Stage alterado: ${c.stage} → ${stage}`,
+            metadata: {
+              field: 'stage',
+              from: c.stage,
+              to: stage,
+              source: 'bulk',
+            },
+          }),
+        ),
+    );
+
+    await this.audit.write({
+      action: 'contact.bulk.stage',
+      entityType: 'contact',
+      after: { ids, stage, matched, updated: result.count },
+    });
+
+    return { matched, updated: result.count };
+  }
+
   // Garante que o ownerId (se fornecido) pertence ao tenant atual.
   // Usa o client tenant-scoped — se o user e de outro tenant, RLS
   // retorna null e levantamos 400.

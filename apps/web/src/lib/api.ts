@@ -309,3 +309,22 @@ export function apiCreateActivity(
 export function apiDeleteActivity(id: string): Promise<void> {
   return apiServerFetch<void>(`/activities/${id}`, { method: 'DELETE' });
 }
+
+// =====================================================================
+// Bulk operations
+// =====================================================================
+export interface BulkStageResult {
+  matched: number;
+  updated: number;
+}
+
+export function apiBulkUpdateStage(
+  ids: string[],
+  stage: ContactStage,
+): Promise<BulkStageResult> {
+  return apiServerFetch<BulkStageResult>('/contacts/bulk/stage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, stage }),
+  });
+}

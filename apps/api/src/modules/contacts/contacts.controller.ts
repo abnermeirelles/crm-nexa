@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ContactsService } from './contacts.service';
+import { BulkStageDto } from './dto/bulk-stage.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { ListContactsQueryDto } from './dto/list-contacts.query';
 import { UpdateContactDto } from './dto/update-contact.dto';
@@ -47,5 +48,10 @@ export class ContactsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.contacts.softDelete(id);
+  }
+
+  @Post('bulk/stage')
+  bulkStage(@Body() dto: BulkStageDto) {
+    return this.contacts.bulkUpdateStage(dto.ids, dto.stage);
   }
 }
