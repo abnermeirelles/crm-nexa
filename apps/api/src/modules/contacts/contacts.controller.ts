@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -29,6 +30,18 @@ export class ContactsController {
   @Get()
   list(@Query() query: ListContactsQueryDto) {
     return this.contacts.list(query);
+  }
+
+  // Export precisa vir ANTES de :id senao Express tenta validar
+  // "export" como UUID e da 400.
+  @Get('export')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header(
+    'Content-Disposition',
+    'attachment; filename="contacts.csv"',
+  )
+  export(@Query() query: ListContactsQueryDto) {
+    return this.contacts.exportCsv(query);
   }
 
   @Get(':id')

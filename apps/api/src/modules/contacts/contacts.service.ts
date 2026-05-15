@@ -31,6 +31,17 @@ const CONTACT_SELECT = {
   updatedAt: true,
 } as const satisfies Prisma.ContactSelect;
 
+function csvEscape(value: string | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  const s = String(value);
+  // Wrap em aspas duplas + escapa aspas duplas internas (RFC 4180)
+  // quando contem virgula, aspa dupla, ou newline.
+  if (/[,"\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
 @Injectable()
 export class ContactsService {
   constructor(
@@ -123,6 +134,74 @@ export class ContactsService {
     });
     if (!contact) throw new NotFoundException({ code: 'CONTACT_NOT_FOUND' });
     return contact;
+  }
+
+  // Export CSV — respeita os mesmos filtros do list. Hard limit de 10k
+  // linhas para evitar OOM no servidor (acima vira job assincrono no
+  // futuro). Sem paginacao: retorna tudo em uma resposta.
+  async exportCsv(query: ListContactsQueryDto): Promise<string> {
+    const where: Prisma.ContactWhereInput = { deletedAt: null };
+    if (query.q && query.q.length > 0) {
+      where.OR = [
+        { name: { contains: query.q, mode: 'insensitive' } },
+        { email: { contains: query.q, mode: 'insensitive' } },
+      ];
+    }
+    if (query.stage) where.stage = query.stage;
+    if (query.ownerId) where.ownerId = query.ownerId;
+    if (query.tag) where.tags = { has: query.tag };
+
+    const EXPORT_HARD_LIMIT = 10_000;
+    const rows = await this.prisma.client.contact.findMany({
+      where,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: EXPORT_HARD_LIMIT,
+      select: CONTACT_SELECT,
+    });
+
+    const header = [
+      'name',
+      'email',
+      'phone',
+      'document',
+      'companyName',
+      'stage',
+      'source',
+      'tags',
+    ].join(',');
+
+    const body = rows
+      .map((c) =>
+        [
+          csvEscape(c.name),
+          csvEscape(c.email),
+          csvEscape(c.phone),
+          csvEscape(c.document),
+          csvEscape(c.companyName),
+          csvEscape(c.stage),
+          csvEscape(c.source),
+          // tags juntas por ';' para nao confundir com separador CSV
+          csvEscape(c.tags.join(';')),
+        ].join(','),
+      )
+      .join('\n');
+
+    await this.audit.write({
+      action: 'contact.export',
+      entityType: 'contact',
+      after: {
+        filter: {
+          q: query.q,
+          stage: query.stage,
+          ownerId: query.ownerId,
+          tag: query.tag,
+        },
+        rowsExported: rows.length,
+        truncated: rows.length === EXPORT_HARD_LIMIT,
+      },
+    });
+
+    return `${header}\n${body}`;
   }
 
   async update(id: string, dto: UpdateContactDto) {

@@ -58,6 +58,15 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
     return `/contacts${s ? `?${s}` : ''}`;
   };
 
+  const exportHref = (() => {
+    const sp = new URLSearchParams();
+    if (q) sp.set('q', q);
+    if (stage) sp.set('stage', stage);
+    if (tag) sp.set('tag', tag);
+    const s = sp.toString();
+    return `/contacts/export${s ? `?${s}` : ''}`;
+  })();
+
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b px-6 py-4">
@@ -70,6 +79,13 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <a
+            href={exportHref}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            download
+          >
+            Exportar CSV
+          </a>
           <Link
             href="/contacts/import"
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
