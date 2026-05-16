@@ -25,11 +25,13 @@ services:
       DATABASE_ADMIN_URL_FILE: /run/secrets/nexa_database_admin_url
       JWT_ACCESS_SECRET_FILE: /run/secrets/nexa_jwt_access_secret
       JWT_REFRESH_SECRET_FILE: /run/secrets/nexa_jwt_refresh_secret
+      REDIS_URL_FILE: /run/secrets/nexa_redis_url
     secrets:
       - nexa_database_url
       - nexa_database_admin_url
       - nexa_jwt_access_secret
       - nexa_jwt_refresh_secret
+      - nexa_redis_url
     healthcheck:
       test:
         ["CMD-SHELL", "wget -qO- http://localhost:3001/health >/dev/null || exit 1"]
@@ -128,4 +130,6 @@ secrets:
   nexa_jwt_access_secret:
     external: true
   nexa_jwt_refresh_secret:
+    external: true
+  nexa_redis_url:
     external: true

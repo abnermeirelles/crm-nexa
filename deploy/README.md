@@ -34,6 +34,7 @@ Portainer → **Secrets** → Add secret. Cada um, cole o valor real:
 | `nexa_database_admin_url` | URL admin (`postgresql://crm_admin:...`) — usada por migrations |
 | `nexa_jwt_access_secret` | 64 bytes hex (`openssl rand -hex 64`) |
 | `nexa_jwt_refresh_secret` | 64 bytes hex |
+| `nexa_redis_url` | URL completa do Redis no overlay `infra_internal` (`redis://:<senha>@redis3:6381`) — usado pelo BullMQ |
 
 > Os valores em `.env` local servem como referência mas **não devem ser reutilizados em prod** quando chegarmos lá.
 
